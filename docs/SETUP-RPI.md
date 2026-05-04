@@ -161,6 +161,26 @@ Créer `~/wildwatch/config.toml` sur le RPi (voir `capture/config.toml.example` 
 server_url = "http://192.168.0.21:8000"  # IP du Mac/serveur
 ```
 
+## Installation tout-en-un (recommandé)
+
+Pour automatiser toutes les étapes ci-dessous (setup système, déploiement code,
+config runtime, service systemd, génération clé API), utilise l'installateur
+Python :
+
+```bash
+uv run _recovery/install_wildwatch.py
+```
+
+Le script découvre le RPi sur le réseau (mDNS → ARP → saisie manuelle), gère
+le scénario neuf vs réinstall, génère ou récupère la clé API, et pilote tout
+via SSH/rsync. Il est idempotent : tu peux le relancer à volonté.
+
+Pré-requis : `uv` et `rsync` sur ton PC, clé SSH déjà configurée pour
+`dietpi@<host>` (sinon le script t'indique la commande à lancer).
+
+Les sections 4 à 7 ci-dessous décrivent les étapes manuelles équivalentes,
+utiles pour debug ou si tu veux contrôler chaque étape.
+
 ## 7. Lancement
 
 ### Lancement manuel (pour test/dev)
