@@ -26,12 +26,33 @@ mises à jour de `rpicam-apps`.
 
 ## V0.2 — Détection de mouvement
 
-- [ ] Implémenter la détection de mouvement par comparaison de frames (picamera2)
-- [ ] Mode dual résolution : preview 640x480 pour la détection, capture 4608x2592 pour les photos
-- [ ] Seuil de déclenchement configurable
-- [ ] Cooldown entre les captures (anti-spam)
-- [ ] Capture en rafale (3-5 photos par événement)
-- [ ] Fichier de configuration TOML (`/etc/birdy/config.toml`)
+- [x] Détection par background subtraction adaptatif (numpy + picamera2 lores YUV)
+- [x] Mode preview 640x480 + bascule `switch_mode_and_capture_file` vers 2304x1296
+      pour les captures (contournement de la limite CMA 64 Mo du RPi 2 v1.1)
+- [x] Seuils de déclenchement configurables (pixel_threshold, area_threshold)
+- [x] Cooldown entre les captures (anti-spam, 5s par défaut)
+- [x] Capture en rafale (3 photos par défaut, intervalle 0.5s)
+- [x] Fichier de configuration TOML (`~/birdy/config.toml`, `/etc/birdy/` en V1.0)
+- [x] Tests TDD du détecteur de mouvement (9 tests verts)
+- [x] Validation bout en bout sur le RPi : détection → capture rafale → upload HTTP
+
+### Notes V0.2
+
+**CMA limité à 64 Mo sur RPi 2 v1.1** : la pleine résolution 4608×2592 est
+inaccessible car le V4L2 driver alloue toujours 4 buffers minimum
+(4 × 36 Mo > 64 Mo). On utilise 2304×1296 (3 MP, ~36 Mo) qui tient large.
+Augmenter le CMA via `cma=256M` dans `cmdline.txt` cause un kernel panic au boot
+sur cette plateforme. À explorer en V2+ : `dtoverlay=...,cma-size=...` dans
+`config.txt` (plus sûr car le bootloader peut fallback).
+
+**DietPi blackliste par défaut `bcm2835_isp` et `bcm2835_codec`** dans
+`/etc/modprobe.d/dietpi-disable_rpi_camera.conf` et `dietpi-disable_rpi_codec.conf`.
+Sans ces modules, libcamera ne voit pas la caméra. Le script `_recovery/setup_rpi.sh`
+les supprime.
+
+**Firmware variant** : avec `gpu_mem_1024=16` (défaut DietPi), le firmware utilise
+`start_cd.elf` (cut-down) qui ne supporte pas la caméra. On force `gpu_mem_1024=96`
+pour avoir le `start.elf` complet.
 
 ## V0.3 — Upload fiable et service systemd
 

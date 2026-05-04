@@ -59,3 +59,6 @@ htmlcov/
 
 # Configuration locale
 config.local.toml
+
+# Backups de configs SD card (peuvent contenir credentials WiFi)
+_recovery/sd_backup/

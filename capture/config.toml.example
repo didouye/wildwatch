@@ -1,0 +1,51 @@
+# BirdyCapture — exemple de configuration
+# Copier vers ~/birdy/config.toml et adapter.
+# Toutes les sections et clés sont optionnelles ; les valeurs par défaut
+# sont définies dans birdy_capture/config.py.
+
+[camera]
+# Résolution capture. Sur RPi 2 v1.1 (CMA 64 Mo), la pleine réso 4608×2592
+# dépasse le quota DMA car le V4L2 driver alloue 4 buffers minimum
+# (4 × 36 Mo > 64 Mo). On reste à 2304×1296 (3 MP, ~36 Mo total) qui est très
+# largement suffisant pour identifier des animaux.
+capture_width = 2304
+capture_height = 1296
+# Stream basse résolution utilisé pour la détection de mouvement
+detection_width = 640
+detection_height = 480
+# Rotation logicielle si la caméra n'est pas montée à l'endroit (0, 90, 180, 270)
+rotation = 0
+
+[motion]
+# Différence de luminance par pixel (0-255) considérée comme "changé"
+pixel_threshold = 25
+# Fraction de pixels qui doivent avoir changé pour déclencher (0.02 = 2%)
+area_threshold = 0.02
+# Vitesse d'adaptation du background (0 = jamais, 1 = nouvelle frame remplace)
+# Plus bas = plus stable mais lent à s'adapter aux changements de luminosité
+background_alpha = 0.05
+# Frames ignorées au démarrage le temps que le background se stabilise
+warmup_frames = 30
+# Délai minimum entre deux déclenchements consécutifs
+cooldown_seconds = 5.0
+
+[capture]
+# Photos prises par déclenchement
+burst_count = 3
+# Délai entre deux photos d'une même rafale
+burst_interval_seconds = 0.5
+
+[upload]
+# URL du serveur BirdyServer
+server_url = "http://192.168.0.21:8000"
+# Clé API (vide = pas d'auth en V0.2)
+api_key = ""
+# Files d'attente locales
+queue_dir = "~/birdy/queue"
+sent_dir = "~/birdy/sent"
+# Intervalle de tentative en cas d'échec
+retry_interval_seconds = 30.0
+# Durée de conservation des photos déjà envoyées (jours)
+sent_retention_days = 7
+# Timeout d'une requête HTTP
+request_timeout_seconds = 60.0

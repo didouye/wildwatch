@@ -20,6 +20,10 @@ packages = ["src/birdy_capture"]
 
 [dependency-groups]
 dev = [
+    # numpy est requis par le code (motion.py) mais sur le RPi il est fourni
+    # par le paquet apt python3-picamera2 → on l'utilise via --system-site-packages.
+    # Sur le Mac (tests/dev), on a besoin de l'installer via uv.
+    "numpy>=1.24",
     "pytest>=8",
     "ruff>=0.6",
 ]

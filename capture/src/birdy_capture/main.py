@@ -1,93 +1,107 @@
-"""Script V0.1 minimal : capture une photo et l'envoie au serveur.
+"""BirdyCapture V0.2 — détection de mouvement + capture rafale + upload.
 
-Ce script est volontairement simpliste. Il sert à valider la chaîne de bout en bout
-(capture caméra → upload HTTP). Les versions suivantes ajouteront la détection de
-mouvement, la file d'attente, le retry, etc.
+Lit la config dans ~/birdy/config.toml (ou --config), tourne en boucle :
+  1. Lit une frame basse résolution
+  2. La passe au détecteur de mouvement (background subtraction adaptatif)
+  3. Si mouvement détecté → capture une rafale haute résolution
+  4. Met les photos en queue locale, tente de les envoyer au serveur
+  5. Reprend la surveillance
 
-Usage :
-    BIRDY_SERVER_URL=http://<serveur>:8000 birdy-capture
+Arrêt propre via SIGINT/SIGTERM.
 """
 
 from __future__ import annotations
 
 import argparse
-import os
-import sys
+import logging
+import signal
 import tempfile
+import time
 from datetime import datetime, timezone
 from pathlib import Path
 
-import httpx
+from birdy_capture.camera import Camera
+from birdy_capture.config import Config, load
+from birdy_capture.motion import MotionDetector
+from birdy_capture.uploader import Uploader
+
+log = logging.getLogger("birdy_capture")
+
+DEFAULT_CONFIG_PATH = Path("~/birdy/config.toml").expanduser()
 
 
-def capture_photo(output_path: Path) -> None:
-    """Capture une photo via picamera2.
-
-    picamera2 est fourni par le paquet système `python3-picamera2` sur DietPi.
-    L'environnement uv doit être créé avec `--system-site-packages` pour y accéder.
-    """
-    try:
-        from picamera2 import Picamera2
-    except ImportError as exc:
-        raise RuntimeError(
-            "picamera2 introuvable. Installer le paquet système : "
-            "`sudo apt install -y python3-picamera2`, puis recréer le venv uv "
-            "avec --system-site-packages."
-        ) from exc
-
-    picam2 = Picamera2()
-    config = picam2.create_still_configuration()
-    picam2.configure(config)
-    picam2.start()
-    try:
-        picam2.capture_file(str(output_path))
-    finally:
-        picam2.stop()
-        picam2.close()
+class StopRequested(Exception):
+    pass
 
 
-def upload_photo(photo_path: Path, server_url: str, captured_at: datetime) -> dict:
-    url = f"{server_url.rstrip('/')}/api/photos"
-    with photo_path.open("rb") as fp:
-        files = {"file": (photo_path.name, fp, "image/jpeg")}
-        data = {"captured_at": captured_at.isoformat()}
-        response = httpx.post(url, files=files, data=data, timeout=30.0)
-    response.raise_for_status()
-    return response.json()
+def _install_signal_handlers() -> None:
+    def handler(signum: int, _frame: object) -> None:
+        log.info("Signal %s reçu, arrêt en cours", signum)
+        raise StopRequested
+
+    signal.signal(signal.SIGINT, handler)
+    signal.signal(signal.SIGTERM, handler)
+
+
+def _capture_burst(camera: Camera, uploader: Uploader, config: Config) -> int:
+    """Capture une rafale et l'enqueue. Retourne le nombre de photos."""
+    captured = 0
+    for i in range(config.capture.burst_count):
+        captured_at = datetime.now(timezone.utc)
+        with tempfile.NamedTemporaryFile(prefix="birdy_", suffix=".jpg", delete=False) as tmp:
+            tmp_path = Path(tmp.name)
+        try:
+            camera.capture_to_file(tmp_path)
+            uploader.enqueue(tmp_path, captured_at)
+            captured += 1
+        except Exception as exc:
+            log.exception("Échec capture %d/%d: %s", i + 1, config.capture.burst_count, exc)
+            tmp_path.unlink(missing_ok=True)
+        if i < config.capture.burst_count - 1:
+            time.sleep(config.capture.burst_interval_seconds)
+    return captured
+
+
+def run(config: Config) -> None:
+    detector = MotionDetector(config.motion)
+    uploader = Uploader(config.upload)
+
+    log.info("Démarrage de la caméra")
+    with Camera(config.camera) as camera:
+        log.info("Boucle de surveillance démarrée")
+        while True:
+            frame = camera.read_detection_frame()
+            triggered = detector.process(frame, now=time.monotonic())
+            if triggered:
+                log.info("Mouvement détecté (score=%.3f), capture rafale", detector.last_motion_score)
+                captured = _capture_burst(camera, uploader, config)
+                log.info("Rafale terminée : %d photo(s) enqueue(s)", captured)
+            sent = uploader.flush()
+            if sent:
+                log.info("%d photo(s) envoyée(s) au serveur", sent)
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="BirdyCapture V0.1 — capture + upload")
-    parser.add_argument(
-        "--server-url",
-        default=os.environ.get("BIRDY_SERVER_URL", "http://localhost:8000"),
-        help="URL du serveur BirdyServer (ou variable d'env BIRDY_SERVER_URL)",
-    )
-    parser.add_argument(
-        "--keep",
-        action="store_true",
-        help="Conserver le fichier local après envoi",
-    )
+    parser = argparse.ArgumentParser(description="BirdyCapture V0.2")
+    parser.add_argument("--config", type=Path, default=DEFAULT_CONFIG_PATH)
+    parser.add_argument("--log-level", default="INFO")
     args = parser.parse_args()
 
-    captured_at = datetime.now(timezone.utc)
-    with tempfile.NamedTemporaryFile(prefix="birdy_", suffix=".jpg", delete=False) as tmp:
-        photo_path = Path(tmp.name)
+    logging.basicConfig(
+        level=getattr(logging, args.log_level.upper()),
+        format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
+    )
+
+    config = load(args.config)
+    log.info("Config chargée depuis %s", args.config if args.config.exists() else "(défaut)")
+    log.info("Serveur cible : %s", config.upload.server_url)
+
+    _install_signal_handlers()
 
     try:
-        print(f"[birdy] Capture en cours -> {photo_path}", flush=True)
-        capture_photo(photo_path)
-        print(f"[birdy] Capture OK ({photo_path.stat().st_size} octets)", flush=True)
-
-        print(f"[birdy] Envoi vers {args.server_url}", flush=True)
-        result = upload_photo(photo_path, args.server_url, captured_at)
-        print(f"[birdy] Serveur a répondu : {result}", flush=True)
-    except Exception as exc:
-        print(f"[birdy] ERREUR : {exc}", file=sys.stderr, flush=True)
-        sys.exit(1)
-    finally:
-        if not args.keep and photo_path.exists():
-            photo_path.unlink()
+        run(config)
+    except StopRequested:
+        log.info("Arrêt demandé, sortie propre")
 
 
 if __name__ == "__main__":
