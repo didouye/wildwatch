@@ -56,12 +56,21 @@ pour avoir le `start.elf` complet.
 
 ## V0.3 — Upload fiable et service systemd
 
-- [ ] File d'attente locale en `~/wildwatch/queue/` (déjà fait en V0.2, à promouvoir vers `/var/spool/wildwatch/` pour la prod)
-- [ ] Upload avec retry automatique en cas d'échec réseau (déjà fait en V0.2, à durcir)
-- [ ] Nettoyage des photos envoyées après X jours
-- [ ] Métadonnées JSON accompagnant chaque photo (timestamp, config capture, etc.)
-- [ ] Service systemd pour wildwatch-capture (démarrage au boot, restart on failure)
-- [ ] Authentification par clé API
+- [x] File d'attente locale en `~/wildwatch/queue/` + dossier `dead/` pour les
+      4xx irrécupérables (auth, payload invalide)
+- [x] Upload avec retry intelligent : 408/425/429/5xx + erreurs réseau restent
+      en queue, autres 4xx partent en dead-letter
+- [x] Nettoyage périodique de `~/wildwatch/sent/` (toutes les heures, photos
+      plus vieilles que `sent_retention_days`)
+- [x] Métadonnées JSON enrichies par photo : motion_score, frame_index,
+      burst_size, camera (résolution), sensor (modèle, exposure, gain, lux),
+      system (hostname, cpu_temp, memory, load)
+- [x] Service systemd `wildwatch-capture.service` (Restart=on-failure,
+      StartLimit, hardening), démarrage automatique au boot
+- [x] Auth par clé API : `WILDWATCH_API_KEY` côté serveur, header
+      `Authorization: Bearer <key>` côté capture, sidecar JSON persisté côté
+      serveur
+- [x] 27 tests TDD verts (20 capture + 7 server)
 
 ## V0.4 — Serveur web fonctionnel
 
