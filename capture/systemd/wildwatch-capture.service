@@ -1,0 +1,38 @@
+[Unit]
+Description=WildWatch capture client (motion-triggered wildlife photo capture)
+Documentation=https://github.com/didouye/wildwatch
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=dietpi
+Group=dietpi
+
+# Le venv est créé dans le checkout du code (~/wildwatch-src/capture/.venv) et
+# l'entry point installé par uv s'appelle "wildwatch-capture".
+WorkingDirectory=/home/dietpi/wildwatch-src/capture
+ExecStart=/home/dietpi/wildwatch-src/capture/.venv/bin/wildwatch-capture --log-level INFO
+
+# Redémarrage automatique en cas de crash, mais pas en boucle infinie si tout
+# casse (par exemple caméra non détectée à chaque démarrage).
+Restart=on-failure
+RestartSec=10
+StartLimitIntervalSec=300
+StartLimitBurst=5
+
+# Logs vers le journal systemd (`journalctl -u wildwatch-capture -f`).
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=wildwatch-capture
+
+# Hardening léger.
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=read-only
+# Le service doit pouvoir écrire dans ~/wildwatch/ (queue, sent, dead, config).
+ReadWritePaths=/home/dietpi/wildwatch
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target

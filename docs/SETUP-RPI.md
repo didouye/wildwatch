@@ -163,11 +163,34 @@ server_url = "http://192.168.0.21:8000"  # IP du Mac/serveur
 
 ## 7. Lancement
 
+### Lancement manuel (pour test/dev)
+
 ```bash
 ssh dietpi@dietpi.local '
   cd ~/wildwatch-src/capture
   .venv/bin/wildwatch-capture --log-level INFO
 '
+```
+
+### Lancement comme service systemd (production)
+
+Une fois la chaîne validée manuellement, on installe wildwatch-capture comme
+service qui démarre au boot et redémarre en cas de crash :
+
+```bash
+ssh dietpi@dietpi.local 'bash -s' < _recovery/install_systemd.sh
+```
+
+Suivre les logs :
+
+```bash
+ssh dietpi@dietpi.local 'sudo journalctl -u wildwatch-capture -f'
+```
+
+Arrêter / redémarrer :
+
+```bash
+ssh dietpi@dietpi.local 'sudo systemctl restart wildwatch-capture'
 ```
 
 Logs attendus :
