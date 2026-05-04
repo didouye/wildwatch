@@ -72,12 +72,28 @@ value to `gpu_mem_1024=96` to load the full `start.elf`.
       <key>` client side, JSON sidecar persisted server side
 - [x] 27 TDD tests green (20 capture + 7 server)
 
-## V0.4 -- Functional web server
+## V0.4a -- Server persistence and REST API
 
-- [ ] Full REST API (photo CRUD, pagination, filters)
-- [ ] Photo storage organized by date (`/data/photos/YYYY/MM/DD/`)
-- [ ] SQLite metadata store
-- [ ] Automatic thumbnail generation (150 px, 400 px, 800 px)
+- [x] SQLite catalog (SQLModel + Alembic ready) with schema designed for a
+      future PostgreSQL migration
+- [x] Photos table: captured_at, received_at, file_path, file_size, hostname,
+      motion_score, camera/sensor/system metadata, indexed on captured_at
+      desc and hostname
+- [x] Modular FastAPI app (routers split across health, photos, stats, admin)
+- [x] `POST /api/photos` now writes the row to SQLite (no more JSON sidecars)
+- [x] `GET /api/photos` paginated (limit/offset, max 200) with date range
+      and hostname filters and `captured_at_desc|asc` ordering
+- [x] `GET /api/photos/{id}`, `GET /api/photos/{id}/file`,
+      `DELETE /api/photos/{id}`
+- [x] `GET /api/stats` with `total`, `by_day`, `by_hostname`
+- [x] `POST /api/admin/reindex` to ingest legacy V0.3 sidecars on disk
+      (idempotent, falls back to file mtime when no sidecar)
+- [x] 17 server tests green (auth, upload, list/filters/pagination, detail,
+      download, delete, stats, reindex)
+
+## V0.4b -- Web UI and thumbnails
+
+- [ ] Automatic thumbnail generation (150 px, 400 px, 800 px) on upload
 - [ ] Web UI: paginated gallery
 - [ ] Web UI: photo detail with metadata
 - [ ] Web UI: date filters

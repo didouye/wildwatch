@@ -1,77 +1,29 @@
 from __future__ import annotations
 
-import json
-import os
-from datetime import datetime, timezone
-from pathlib import Path
+from contextlib import asynccontextmanager
 
-from fastapi import Depends, FastAPI, File, Form, Header, HTTPException, UploadFile
+from fastapi import FastAPI
 
-API_KEY = os.environ.get("WILDWATCH_API_KEY") or None
-PHOTOS_DIR_OVERRIDE = os.environ.get("WILDWATCH_PHOTOS_DIR")
-PHOTOS_DIR = (
-    Path(PHOTOS_DIR_OVERRIDE).resolve()
-    if PHOTOS_DIR_OVERRIDE
-    else Path(__file__).resolve().parents[3] / "data" / "photos"
-)
-
-app = FastAPI(title="WildWatch server", version="0.3.0")
+from wildwatch_server.db import init_db
+from wildwatch_server.routes import admin, health, photos, stats
 
 
-def require_api_key(authorization: str | None = Header(default=None)) -> None:
-    """FastAPI dependency that checks the `Authorization: Bearer <key>` header.
-
-    If `WILDWATCH_API_KEY` is not set on the server, auth is disabled (useful
-    for local dev). Otherwise the header must match exactly, or returns 401.
-    """
-    if API_KEY is None:
-        return
-    expected = f"Bearer {API_KEY}"
-    if authorization != expected:
-        raise HTTPException(status_code=401, detail="Invalid or missing API key")
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    init_db()
+    yield
 
 
-@app.get("/health")
-def health() -> dict[str, str]:
-    return {"status": "ok"}
+def create_app() -> FastAPI:
+    app = FastAPI(title="WildWatch server", version="0.4.0", lifespan=lifespan)
+    app.include_router(health.router)
+    app.include_router(photos.router)
+    app.include_router(stats.router)
+    app.include_router(admin.router)
+    return app
 
 
-@app.post("/api/photos", dependencies=[Depends(require_api_key)])
-async def upload_photo(
-    file: UploadFile = File(...),
-    captured_at: str | None = Form(default=None),
-    metadata: str | None = Form(default=None),
-) -> dict[str, str]:
-    if file.content_type not in {"image/jpeg", "image/png"}:
-        raise HTTPException(status_code=415, detail=f"Unsupported media type: {file.content_type}")
-
-    now = datetime.now(timezone.utc)
-    target_dir = PHOTOS_DIR / f"{now:%Y/%m/%d}"
-    target_dir.mkdir(parents=True, exist_ok=True)
-
-    suffix = Path(file.filename or "photo.jpg").suffix or ".jpg"
-    target_path = target_dir / f"{now:%Y%m%dT%H%M%S%f}{suffix}"
-
-    contents = await file.read()
-    target_path.write_bytes(contents)
-
-    if metadata:
-        try:
-            parsed = json.loads(metadata)
-        except json.JSONDecodeError:
-            raise HTTPException(status_code=400, detail="metadata must be valid JSON") from None
-        meta_path = target_path.with_suffix(target_path.suffix + ".meta.json")
-        meta_path.write_text(json.dumps(parsed, sort_keys=True))
-
-    relative = target_path.relative_to(PHOTOS_DIR.parent.parent) if not PHOTOS_DIR_OVERRIDE else (
-        Path("data/photos") / target_path.relative_to(PHOTOS_DIR)
-    )
-    return {
-        "stored_path": str(relative),
-        "size_bytes": str(len(contents)),
-        "received_at": now.isoformat(),
-        "captured_at": captured_at or "",
-    }
+app = create_app()
 
 
 def main() -> None:
