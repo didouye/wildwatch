@@ -1,7 +1,7 @@
 [project]
-name = "birdy-server"
+name = "wildwatch-server"
 version = "0.1.0"
-description = "Wildlife photobooth web server"
+description = "WildWatch web server"
 requires-python = ">=3.11"
 dependencies = [
     "fastapi>=0.115",
@@ -11,14 +11,14 @@ dependencies = [
 ]
 
 [project.scripts]
-birdy-server = "birdy_server.main:main"
+wildwatch-server = "wildwatch_server.main:main"
 
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
-packages = ["src/birdy_server"]
+packages = ["src/wildwatch_server"]
 
 [dependency-groups]
 dev = [

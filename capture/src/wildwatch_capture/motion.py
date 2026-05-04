@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import numpy as np
 
-from birdy_capture.config import MotionConfig
+from wildwatch_capture.config import MotionConfig
 
 
 class MotionDetector:

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Script de setup automatique pour BirdyPhotobooth après reflash DietPi.
+# Script de setup automatique pour WildWatch après reflash DietPi.
 # À exécuter sur le RPi via :
 #   ssh dietpi@dietpi.local 'bash -s' < _recovery/setup_rpi.sh
 #
@@ -7,7 +7,7 @@
 
 set -euo pipefail
 
-echo "=== [1/5] Mise à jour apt + paquets BirdyPhotobooth ==="
+echo "=== [1/5] Mise à jour apt + paquets WildWatch ==="
 sudo apt-get update
 sudo apt-get install -y --no-install-recommends \
   rpicam-apps \
@@ -44,15 +44,15 @@ fi
 "$HOME/.local/bin/uv" --version
 
 echo "=== [4/5] Création du dossier projet ==="
-mkdir -p "$HOME/birdyphotobooth"
-mkdir -p "$HOME/birdy/queue" "$HOME/birdy/sent"
+mkdir -p "$HOME/wildwatch-src"
+mkdir -p "$HOME/wildwatch/queue" "$HOME/wildwatch/sent"
 
 echo "=== [5/5] Setup terminé ==="
 echo "Prochaines étapes (à faire depuis le Mac) :"
-echo "  1. rsync du code vers le RPi"
+echo "  1. rsync du code vers le RPi (~/wildwatch-src/)"
 echo "  2. uv venv --system-site-packages + uv sync sur le RPi"
-echo "  3. créer ~/birdy/config.toml"
-echo "  4. lancer .venv/bin/birdy-capture"
+echo "  3. créer ~/wildwatch/config.toml"
+echo "  4. lancer .venv/bin/wildwatch-capture"
 echo ""
 echo "NB: si dietpi vient juste d'être ajouté à video/render, il faut une nouvelle"
 echo "session SSH pour que les groupes soient effectifs (logout/login)."

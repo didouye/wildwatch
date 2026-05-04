@@ -16,7 +16,7 @@ from typing import TYPE_CHECKING
 
 import numpy as np
 
-from birdy_capture.config import CameraConfig
+from wildwatch_capture.config import CameraConfig
 
 if TYPE_CHECKING:
     from picamera2 import Picamera2  # pragma: no cover

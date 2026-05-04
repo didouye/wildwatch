@@ -1,6 +1,6 @@
-"""BirdyCapture V0.2 — détection de mouvement + capture rafale + upload.
+"""WildWatch capture client V0.2 — détection de mouvement + capture rafale + upload.
 
-Lit la config dans ~/birdy/config.toml (ou --config), tourne en boucle :
+Lit la config dans ~/wildwatch/config.toml (ou --config), tourne en boucle :
   1. Lit une frame basse résolution
   2. La passe au détecteur de mouvement (background subtraction adaptatif)
   3. Si mouvement détecté → capture une rafale haute résolution
@@ -20,14 +20,14 @@ import time
 from datetime import datetime, timezone
 from pathlib import Path
 
-from birdy_capture.camera import Camera
-from birdy_capture.config import Config, load
-from birdy_capture.motion import MotionDetector
-from birdy_capture.uploader import Uploader
+from wildwatch_capture.camera import Camera
+from wildwatch_capture.config import Config, load
+from wildwatch_capture.motion import MotionDetector
+from wildwatch_capture.uploader import Uploader
 
-log = logging.getLogger("birdy_capture")
+log = logging.getLogger("wildwatch_capture")
 
-DEFAULT_CONFIG_PATH = Path("~/birdy/config.toml").expanduser()
+DEFAULT_CONFIG_PATH = Path("~/wildwatch/config.toml").expanduser()
 
 
 class StopRequested(Exception):
@@ -48,7 +48,7 @@ def _capture_burst(camera: Camera, uploader: Uploader, config: Config) -> int:
     captured = 0
     for i in range(config.capture.burst_count):
         captured_at = datetime.now(timezone.utc)
-        with tempfile.NamedTemporaryFile(prefix="birdy_", suffix=".jpg", delete=False) as tmp:
+        with tempfile.NamedTemporaryFile(prefix="wildwatch_", suffix=".jpg", delete=False) as tmp:
             tmp_path = Path(tmp.name)
         try:
             camera.capture_to_file(tmp_path)
@@ -82,7 +82,7 @@ def run(config: Config) -> None:
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="BirdyCapture V0.2")
+    parser = argparse.ArgumentParser(description="WildWatch capture V0.2")
     parser.add_argument("--config", type=Path, default=DEFAULT_CONFIG_PATH)
     parser.add_argument("--log-level", default="INFO")
     args = parser.parse_args()

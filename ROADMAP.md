@@ -1,4 +1,4 @@
-# Roadmap BirdyPhotobooth
+# Roadmap WildWatch
 
 ## V0.1 — Setup et preuve de concept
 
@@ -11,9 +11,9 @@ L'objectif est de valider le matériel et la chaîne complète de bout en bout.
 - [x] Installer Python 3.13 + uv 0.11 sur le RPi
 - [x] Écrire un script minimal qui capture une photo et l'envoie en HTTP à un endpoint de test
 - [x] Côté serveur : endpoint FastAPI minimal qui reçoit et stocke une photo
-- [ ] Tester le serveur FastAPI en local
-- [ ] Déployer le code capture sur le RPi (clone + uv sync --system-site-packages)
-- [ ] Valider la chaîne complète : RPi capture → HTTP POST → serveur stocke
+- [x] Tester le serveur FastAPI en local
+- [x] Déployer le code capture sur le RPi (clone + uv sync --system-site-packages)
+- [x] Valider la chaîne complète : RPi capture → HTTP POST → serveur stocke
 
 ### Notes V0.1
 
@@ -32,7 +32,7 @@ mises à jour de `rpicam-apps`.
 - [x] Seuils de déclenchement configurables (pixel_threshold, area_threshold)
 - [x] Cooldown entre les captures (anti-spam, 5s par défaut)
 - [x] Capture en rafale (3 photos par défaut, intervalle 0.5s)
-- [x] Fichier de configuration TOML (`~/birdy/config.toml`, `/etc/birdy/` en V1.0)
+- [x] Fichier de configuration TOML (`~/wildwatch/config.toml`, `/etc/wildwatch/` en V1.0)
 - [x] Tests TDD du détecteur de mouvement (9 tests verts)
 - [x] Validation bout en bout sur le RPi : détection → capture rafale → upload HTTP
 
@@ -56,11 +56,11 @@ pour avoir le `start.elf` complet.
 
 ## V0.3 — Upload fiable et service systemd
 
-- [ ] File d'attente locale (`/var/spool/birdy/queue/`)
-- [ ] Upload avec retry automatique en cas d'échec réseau
+- [ ] File d'attente locale en `~/wildwatch/queue/` (déjà fait en V0.2, à promouvoir vers `/var/spool/wildwatch/` pour la prod)
+- [ ] Upload avec retry automatique en cas d'échec réseau (déjà fait en V0.2, à durcir)
 - [ ] Nettoyage des photos envoyées après X jours
 - [ ] Métadonnées JSON accompagnant chaque photo (timestamp, config capture, etc.)
-- [ ] Service systemd pour BirdyCapture (démarrage au boot, restart on failure)
+- [ ] Service systemd pour wildwatch-capture (démarrage au boot, restart on failure)
 - [ ] Authentification par clé API
 
 ## V0.4 — Serveur web fonctionnel

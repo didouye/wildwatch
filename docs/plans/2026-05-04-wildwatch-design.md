@@ -1,4 +1,4 @@
-# BirdyPhotobooth — Design initial
+# WildWatch — Design initial
 
 Date : 2026-05-04
 
@@ -34,7 +34,7 @@ Piège photographique automatique pour animaux sauvages. Un Raspberry Pi équip�
 
 Deux composants indépendants communiquant via HTTP unidirectionnel (RPi → serveur).
 
-### BirdyCapture (RPi)
+### wildwatch-capture (RPi)
 
 - Boucle de surveillance avec picamera2
 - Preview basse résolution (640x480) pour la détection
@@ -44,7 +44,7 @@ Deux composants indépendants communiquant via HTTP unidirectionnel (RPi → ser
 - Configuration TOML
 - Service systemd
 
-### BirdyServer (VPS)
+### wildwatch-server (VPS)
 
 - API REST FastAPI (upload, CRUD, stats)
 - Stockage fichiers par date

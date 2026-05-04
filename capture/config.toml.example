@@ -1,7 +1,7 @@
-# BirdyCapture — exemple de configuration
-# Copier vers ~/birdy/config.toml et adapter.
+# WildWatch — exemple de configuration
+# Copier vers ~/wildwatch/config.toml et adapter.
 # Toutes les sections et clés sont optionnelles ; les valeurs par défaut
-# sont définies dans birdy_capture/config.py.
+# sont définies dans wildwatch_capture/config.py.
 
 [camera]
 # Résolution capture. Sur RPi 2 v1.1 (CMA 64 Mo), la pleine réso 4608×2592
@@ -36,13 +36,13 @@ burst_count = 3
 burst_interval_seconds = 0.5
 
 [upload]
-# URL du serveur BirdyServer
+# URL du serveur WildWatch
 server_url = "http://192.168.0.21:8000"
 # Clé API (vide = pas d'auth en V0.2)
 api_key = ""
 # Files d'attente locales
-queue_dir = "~/birdy/queue"
-sent_dir = "~/birdy/sent"
+queue_dir = "~/wildwatch/queue"
+sent_dir = "~/wildwatch/sent"
 # Intervalle de tentative en cas d'échec
 retry_interval_seconds = 30.0
 # Durée de conservation des photos déjà envoyées (jours)

@@ -11,7 +11,7 @@ from pathlib import Path
 
 import httpx
 
-from birdy_capture.config import UploadConfig
+from wildwatch_capture.config import UploadConfig
 
 log = logging.getLogger(__name__)
 

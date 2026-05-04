@@ -1,4 +1,4 @@
-# BirdyPhotobooth
+# WildWatch
 
 Piège photographique automatique pour animaux sauvages, basé sur un Raspberry Pi et une caméra infrarouge.
 
@@ -8,8 +8,8 @@ Le système capture automatiquement des photos quand un mouvement est détecté,
 
 Le projet se compose de deux parties :
 
-- **BirdyCapture** (RPi) : client de capture autonome, détecte les mouvements et envoie les photos
-- **BirdyServer** (VPS) : serveur web qui réceptionne, stocke et expose les photos via une interface web
+- **wildwatch-capture** (RPi) : client de capture autonome, détecte les mouvements et envoie les photos
+- **wildwatch-server** (VPS) : serveur web qui réceptionne, stocke et expose les photos via une interface web
 
 Communication unidirectionnelle : le RPi pousse les photos vers le serveur via HTTPS. Le serveur ne contacte jamais le RPi.
 
@@ -41,74 +41,77 @@ ssh dietpi@dietpi.local
 ## Structure du projet
 
 ```
-birdyphotobooth/
-├── capture/                    # BirdyCapture (code RPi)
+wildwatch/
+├── capture/                       # wildwatch-capture (code RPi)
 │   ├── pyproject.toml
+│   ├── config.toml.example
 │   ├── src/
-│   │   └── birdy_capture/
+│   │   └── wildwatch_capture/
 │   │       ├── __init__.py
-│   │       ├── main.py         # Point d'entrée, boucle principale
-│   │       ├── camera.py       # Interface picamera2
-│   │       ├── motion.py       # Détection de mouvement
-│   │       ├── uploader.py     # Envoi des photos au serveur
-│   │       └── config.py       # Lecture config TOML
+│   │       ├── main.py            # Point d'entrée, boucle principale
+│   │       ├── camera.py          # Wrapper picamera2 (preview + switch_mode)
+│   │       ├── motion.py          # Détection par background subtraction
+│   │       ├── uploader.py        # File d'attente + envoi HTTP
+│   │       └── config.py          # Lecture config TOML
+│   ├── tests/
 │   └── systemd/
-│       └── birdy-capture.service
-├── server/                     # BirdyServer (code serveur)
+├── server/                        # wildwatch-server (code serveur)
 │   ├── pyproject.toml
 │   ├── src/
-│   │   └── birdy_server/
+│   │   └── wildwatch_server/
 │   │       ├── __init__.py
-│   │       ├── main.py         # App FastAPI
-│   │       ├── api/            # Routes API
-│   │       ├── models.py       # Modèles SQLite
-│   │       ├── storage.py      # Gestion fichiers photos
-│   │       └── templates/      # Templates Jinja2
-│   ├── static/                 # CSS/JS
-│   └── Dockerfile
-├── docker-compose.yml
+│   │       └── main.py            # App FastAPI
+│   └── static/
+├── docs/
+│   ├── SETUP-RPI.md               # Procédure complète + galères/contournements
+│   └── plans/
+├── _recovery/
+│   └── setup_rpi.sh               # Script setup auto RPi
 ├── README.md
 └── ROADMAP.md
 ```
 
+## Démarrage rapide
+
+Voir **[docs/SETUP-RPI.md](docs/SETUP-RPI.md)** pour la procédure complète d'installation sur le RPi (flash DietPi, config, déploiement) et la liste des galères rencontrées avec leurs contournements.
+
 ## Fonctionnement
 
-### BirdyCapture (RPi)
+### wildwatch-capture (RPi)
 
-1. La caméra tourne en mode preview basse résolution (640x480)
-2. Un algorithme compare les frames successives pour détecter les mouvements
-3. Quand un mouvement est confirmé, une rafale de photos est capturée en haute résolution (4608x2592)
-4. Les photos sont stockées localement dans `/var/spool/birdy/queue/`
-5. Un processus d'upload envoie les photos au serveur via HTTP POST
+1. La caméra tourne en config preview basse résolution (640×480 YUV420)
+2. La luminance est passée à un détecteur de mouvement par background subtraction adaptatif
+3. Quand un mouvement est confirmé, picamera2 bascule en config still pour capturer une rafale en 2304×1296
+4. Les photos sont stockées localement dans `~/wildwatch/queue/`
+5. Un processus d'upload envoie les photos au serveur via HTTP POST, déplace les photos envoyées vers `~/wildwatch/sent/`
 6. En cas de perte WiFi, les photos restent en file d'attente et sont réessayées automatiquement
-7. Configuration via `/etc/birdy/config.toml`
+7. Configuration via `~/wildwatch/config.toml`
 
-### BirdyServer (VPS)
+### wildwatch-server (VPS)
 
-- Réceptionne les photos via l'API REST (authentification par clé API)
-- Génère des thumbnails automatiquement (150px, 400px, 800px)
+- Réceptionne les photos via l'API REST (authentification par clé API à venir)
+- Génère des thumbnails automatiquement (à venir : 150px, 400px, 800px)
 - Stocke les photos sur le système de fichiers, organisées par date
-- Expose une interface web pour consulter, filtrer, taguer et partager les photos
-- Métadonnées stockées en SQLite
+- Expose (à venir) une interface web pour consulter, filtrer, taguer et partager les photos
 
 ### API
 
 ```
 POST   /api/photos           Upload photo + métadonnées
-GET    /api/photos           Liste des photos (pagination, filtres)
-GET    /api/photos/{id}      Détail d'une photo
-GET    /api/photos/{id}/file Téléchargement de l'image
-PATCH  /api/photos/{id}      Mise à jour métadonnées (tags, espèce, favoris)
-DELETE /api/photos/{id}      Suppression
-GET    /api/stats            Statistiques
+GET    /api/photos           Liste des photos (pagination, filtres) — V0.4
+GET    /api/photos/{id}      Détail d'une photo — V0.4
+GET    /api/photos/{id}/file Téléchargement de l'image — V0.4
+PATCH  /api/photos/{id}      Mise à jour métadonnées (tags, espèce, favoris) — V0.5
+DELETE /api/photos/{id}      Suppression — V0.4
+GET    /api/stats            Statistiques — V0.5
 ```
 
 ## Sécurité
 
-- Communication RPi → Serveur en HTTPS
-- Authentification API par clé (`Authorization: Bearer <token>`)
-- Interface web protégée par login/mot de passe
-- Rate limiting sur l'endpoint d'upload
+- Communication RPi → Serveur en HTTPS (V1.0)
+- Authentification API par clé (`Authorization: Bearer <token>`) (V0.3)
+- Interface web protégée par login/mot de passe (V0.4)
+- Rate limiting sur l'endpoint d'upload (V1.0)
 
 ## Licence
 

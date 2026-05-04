@@ -5,7 +5,7 @@ from fastapi import FastAPI, File, Form, HTTPException, UploadFile
 
 PHOTOS_DIR = Path(__file__).resolve().parents[3] / "data" / "photos"
 
-app = FastAPI(title="BirdyServer", version="0.1.0")
+app = FastAPI(title="WildWatch server", version="0.1.0")
 
 
 @app.get("/health")
@@ -42,7 +42,7 @@ async def upload_photo(
 def main() -> None:
     import uvicorn
 
-    uvicorn.run("birdy_server.main:app", host="0.0.0.0", port=8000, reload=False)
+    uvicorn.run("wildwatch_server.main:app", host="0.0.0.0", port=8000, reload=False)
 
 
 if __name__ == "__main__":

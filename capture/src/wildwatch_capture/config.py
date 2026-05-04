@@ -33,8 +33,8 @@ class CaptureConfig:
 class UploadConfig:
     server_url: str = "http://localhost:8000"
     api_key: str = ""  # vide = pas d'auth (V0.2 dev)
-    queue_dir: str = "~/birdy/queue"
-    sent_dir: str = "~/birdy/sent"
+    queue_dir: str = "~/wildwatch/queue"
+    sent_dir: str = "~/wildwatch/sent"
     retry_interval_seconds: float = 30.0
     sent_retention_days: int = 7
     request_timeout_seconds: float = 60.0

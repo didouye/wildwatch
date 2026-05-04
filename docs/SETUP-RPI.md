@@ -1,6 +1,6 @@
 # Setup RPi — Guide complet et galères rencontrées
 
-Ce document couvre l'installation complète de BirdyCapture sur un Raspberry Pi
+Ce document couvre l'installation complète de wildwatch-capture sur un Raspberry Pi
 2 v1.1 avec DietPi et Camera Module 3 NoIR. Il regroupe toutes les étapes
 chronologiques, les pièges rencontrés en V0.1/V0.2 et leurs contournements,
 afin de pouvoir reproduire l'installation rapidement.
@@ -108,7 +108,7 @@ Ce script (`_recovery/setup_rpi.sh`) fait dans l'ordre :
 4. Réglage `gpu_mem_1024=96` si encore à `16` (galère #4).
 5. Ajout de l'utilisateur `dietpi` aux groupes `video` et `render`.
 6. Installation de `uv` via le script officiel Astral.
-7. Création des dossiers `~/birdyphotobooth/`, `~/birdy/queue/`, `~/birdy/sent/`.
+7. Création des dossiers `~/wildwatch-src/`, `~/wildwatch/queue/`, `~/wildwatch/sent/`.
 
 Si le script a touché `gpu_mem_1024`, rebooter manuellement après :
 
@@ -125,14 +125,14 @@ rsync -av --delete \
   --exclude='.venv' --exclude='__pycache__' --exclude='*.pyc' \
   --exclude='.uv-cache' --exclude='.pytest_cache' --exclude='.ruff_cache' \
   --exclude='data/' --exclude='_recovery/' --exclude='.git/' \
-  ./ dietpi@dietpi.local:~/birdyphotobooth/
+  ./ dietpi@dietpi.local:~/wildwatch-src/
 ```
 
 Création du venv côté RPi (⚠️ `--system-site-packages` impératif, voir galère #3) :
 
 ```bash
 ssh dietpi@dietpi.local '
-  cd ~/birdyphotobooth/capture
+  cd ~/wildwatch-src/capture
   ~/.local/bin/uv venv --system-site-packages --python /usr/bin/python3
   ~/.local/bin/uv sync --no-dev --active
 '
@@ -142,11 +142,11 @@ Vérifier les imports :
 
 ```bash
 ssh dietpi@dietpi.local '
-  cd ~/birdyphotobooth/capture
+  cd ~/wildwatch-src/capture
   .venv/bin/python -c "
 import numpy, picamera2, httpx
-from birdy_capture.camera import Camera
-from birdy_capture.motion import MotionDetector
+from wildwatch_capture.camera import Camera
+from wildwatch_capture.motion import MotionDetector
 print(\"OK\")
 "
 '
@@ -154,7 +154,7 @@ print(\"OK\")
 
 ## 6. Configuration runtime
 
-Créer `~/birdy/config.toml` sur le RPi (voir `capture/config.toml.example` à la racine du repo). Au minimum, mettre à jour `[upload].server_url` avec l'IP de ton serveur.
+Créer `~/wildwatch/config.toml` sur le RPi (voir `capture/config.toml.example` à la racine du repo). Au minimum, mettre à jour `[upload].server_url` avec l'IP de ton serveur.
 
 ```toml
 [upload]
@@ -165,15 +165,15 @@ server_url = "http://192.168.0.21:8000"  # IP du Mac/serveur
 
 ```bash
 ssh dietpi@dietpi.local '
-  cd ~/birdyphotobooth/capture
-  .venv/bin/birdy-capture --log-level INFO
+  cd ~/wildwatch-src/capture
+  .venv/bin/wildwatch-capture --log-level INFO
 '
 ```
 
 Logs attendus :
 
 ```
-Config chargée depuis /home/dietpi/birdy/config.toml
+Config chargée depuis /home/dietpi/wildwatch/config.toml
 Serveur cible : http://192.168.0.21:8000
 Démarrage de la caméra
 Boucle de surveillance démarrée
@@ -183,7 +183,7 @@ Ensuite quand un mouvement est détecté :
 
 ```
 Mouvement détecté (score=0.140), capture rafale
-Queued /home/dietpi/birdy/queue/...
+Queued /home/dietpi/wildwatch/queue/...
 Rafale terminée : 3 photo(s) enqueue(s)
 Uploaded ... -> data/photos/...
 3 photo(s) envoyée(s) au serveur
@@ -289,7 +289,7 @@ Même avec `picamera2.create_still_configuration(buffer_count=1)`.
 
 **Cause** : DietPi monte `/tmp` en tmpfs (RAM), donc `/tmp` et `/home/dietpi` sont sur des devices différents. `os.rename(2)` (utilisé par `Path.replace()`) ne sait pas faire de rename cross-device.
 
-**Contournement** : utiliser `shutil.move()` qui fait copy + delete dans ce cas. Voir `capture/src/birdy_capture/uploader.py`.
+**Contournement** : utiliser `shutil.move()` qui fait copy + delete dans ce cas. Voir `capture/src/wildwatch_capture/uploader.py`.
 
 ### Galère #9 — Bug `rpicam-apps` v1.11.1 sur RPi 2 v1.1
 
@@ -329,8 +329,8 @@ ssh-keyscan -H dietpi.local >> ~/.ssh/known_hosts
 | `/boot/firmware/config.txt` | Config caméra + `gpu_mem_1024` |
 | `/boot/firmware/cmdline.txt` | NE PAS TOUCHER |
 | `/etc/modprobe.d/dietpi-disable_rpi_*.conf` | À supprimer |
-| `~/birdy/config.toml` | Config runtime BirdyCapture |
-| `~/birdyphotobooth/capture/.venv/` | venv uv avec system-site-packages |
+| `~/wildwatch/config.toml` | Config runtime wildwatch-capture |
+| `~/wildwatch-src/capture/.venv/` | venv uv avec system-site-packages |
 
 ## Reproduction rapide après reflash
 
@@ -352,17 +352,17 @@ rsync -av --delete \
   --exclude='.venv' --exclude='__pycache__' --exclude='*.pyc' \
   --exclude='.uv-cache' --exclude='.pytest_cache' --exclude='.ruff_cache' \
   --exclude='data/' --exclude='_recovery/' --exclude='.git/' \
-  ./ dietpi@dietpi.local:~/birdyphotobooth/
+  ./ dietpi@dietpi.local:~/wildwatch-src/
 
 # 5. Setup venv
 ssh dietpi@dietpi.local '
-  cd ~/birdyphotobooth/capture
+  cd ~/wildwatch-src/capture
   ~/.local/bin/uv venv --system-site-packages --python /usr/bin/python3
   ~/.local/bin/uv sync --no-dev --active
 '
 
-# 6. Créer ~/birdy/config.toml (manuel ou copier depuis capture/config.toml.example)
+# 6. Créer ~/wildwatch/config.toml (manuel ou copier depuis capture/config.toml.example)
 
 # 7. Lancer
-ssh dietpi@dietpi.local 'cd ~/birdyphotobooth/capture && .venv/bin/birdy-capture'
+ssh dietpi@dietpi.local 'cd ~/wildwatch-src/capture && .venv/bin/wildwatch-capture'
 ```

@@ -5,8 +5,8 @@ from __future__ import annotations
 import numpy as np
 import pytest
 
-from birdy_capture.config import MotionConfig
-from birdy_capture.motion import MotionDetector
+from wildwatch_capture.config import MotionConfig
+from wildwatch_capture.motion import MotionDetector
 
 
 def make_frame(value: int, shape: tuple[int, int] = (60, 80)) -> np.ndarray:
