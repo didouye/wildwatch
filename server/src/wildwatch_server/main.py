@@ -19,10 +19,10 @@ app = FastAPI(title="WildWatch server", version="0.3.0")
 
 
 def require_api_key(authorization: str | None = Header(default=None)) -> None:
-    """Dépendance FastAPI qui vérifie l'en-tête `Authorization: Bearer <key>`.
+    """FastAPI dependency that checks the `Authorization: Bearer <key>` header.
 
-    Si `WILDWATCH_API_KEY` n'est pas définie côté serveur, l'auth est désactivée
-    (utile en dev local). Sinon, exige l'en-tête exact ou répond 401.
+    If `WILDWATCH_API_KEY` is not set on the server, auth is disabled (useful
+    for local dev). Otherwise the header must match exactly, or returns 401.
     """
     if API_KEY is None:
         return

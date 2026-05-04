@@ -1,12 +1,11 @@
-"""Wrapper picamera2.
+"""picamera2 wrapper.
 
-Tourne en permanence en config preview légère (basse résolution, faible empreinte
-CMA). Quand une capture haute résolution est demandée, bascule temporairement vers
-une config still avec `switch_mode_and_capture_file` puis revient à la preview.
+Always runs in a lightweight preview config (low resolution, small CMA
+footprint). When a high-resolution capture is requested, briefly switches to a
+still config via `switch_mode_and_capture_request` and returns to preview.
 
-Cette stratégie permet de tenir dans les ~64 Mo de CMA par défaut sur le RPi 2 v1.1
-là où une config dual-stream haute résolution + lores en simultané dépassait la
-mémoire DMA.
+This strategy fits within the ~64 MB of default CMA on a RPi 2 v1.1, where a
+dual-stream config (full-res main + lores) exhausts DMA memory.
 """
 
 from __future__ import annotations
@@ -66,11 +65,11 @@ class Camera:
             self._still_config = None
 
     def read_detection_frame(self) -> np.ndarray:
-        """Retourne la dernière frame de la preview en niveaux de gris (uint8 2D).
+        """Return the latest preview frame as 2D grayscale (uint8).
 
-        Le format YUV420 stocke la luminance Y dans les premiers `height` lignes,
-        ce qui équivaut à une image en niveaux de gris. On l'extrait directement
-        sans conversion coûteuse.
+        YUV420 stores the Y (luminance) plane in the first `height` rows, which
+        is already a grayscale image. We slice it directly without any costly
+        color conversion.
         """
         if self._picam is None:
             raise RuntimeError("Camera not started")
@@ -79,10 +78,10 @@ class Camera:
         return yuv[:h, : self._cfg.detection_width]
 
     def capture_to_file(self, path: Path) -> None:
-        """Bascule en config still, capture en haute résolution, revient à la preview.
+        """Switch to the still config, capture at high resolution, return to preview.
 
-        Stocke les métadonnées picamera2 (exposure, gain, etc.) dans
-        `self.last_capture_metadata` pour enrichir le JSON côté upload.
+        Stores picamera2 metadata (exposure, gain, etc.) in
+        `self.last_capture_metadata` so the uploader can enrich the JSON sidecar.
         """
         if self._picam is None or self._still_config is None:
             raise RuntimeError("Camera not started")

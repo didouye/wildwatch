@@ -1,13 +1,13 @@
-"""WildWatch capture client V0.2 — détection de mouvement + capture rafale + upload.
+"""WildWatch capture client V0.2 — motion detection + burst capture + upload.
 
-Lit la config dans ~/wildwatch/config.toml (ou --config), tourne en boucle :
-  1. Lit une frame basse résolution
-  2. La passe au détecteur de mouvement (background subtraction adaptatif)
-  3. Si mouvement détecté → capture une rafale haute résolution
-  4. Met les photos en queue locale, tente de les envoyer au serveur
-  5. Reprend la surveillance
+Reads the config at ~/wildwatch/config.toml (or --config), and runs a loop:
+  1. Read a low-resolution frame
+  2. Feed it to the motion detector (adaptive background subtraction)
+  3. On motion: capture a high-resolution burst
+  4. Move photos into the local queue, try to upload them to the server
+  5. Resume monitoring
 
-Arrêt propre via SIGINT/SIGTERM.
+Clean shutdown on SIGINT/SIGTERM.
 """
 
 from __future__ import annotations
@@ -37,7 +37,7 @@ class StopRequested(Exception):
 
 def _install_signal_handlers() -> None:
     def handler(signum: int, _frame: object) -> None:
-        log.info("Signal %s reçu, arrêt en cours", signum)
+        log.info("Signal %s received, shutting down", signum)
         raise StopRequested
 
     signal.signal(signal.SIGINT, handler)
@@ -47,7 +47,7 @@ def _install_signal_handlers() -> None:
 def _capture_burst(
     camera: Camera, uploader: Uploader, config: Config, motion_score: float
 ) -> int:
-    """Capture une rafale et l'enqueue avec métadonnées enrichies."""
+    """Capture a burst and enqueue each photo with enriched metadata."""
     captured = 0
     burst_size = config.capture.burst_count
     for i in range(burst_size):
@@ -66,14 +66,14 @@ def _capture_burst(
             uploader.enqueue(tmp_path, captured_at, extra_metadata=extra)
             captured += 1
         except Exception as exc:
-            log.exception("Échec capture %d/%d: %s", i + 1, burst_size, exc)
+            log.exception("Capture %d/%d failed: %s", i + 1, burst_size, exc)
             tmp_path.unlink(missing_ok=True)
         if i < burst_size - 1:
             time.sleep(config.capture.burst_interval_seconds)
     return captured
 
 
-CLEANUP_INTERVAL_SECONDS = 3600.0  # une fois par heure
+CLEANUP_INTERVAL_SECONDS = 3600.0  # once per hour
 
 
 def run(config: Config) -> None:
@@ -81,26 +81,26 @@ def run(config: Config) -> None:
     uploader = Uploader(config.upload)
     last_cleanup_at = 0.0
 
-    log.info("Démarrage de la caméra")
+    log.info("Starting camera")
     with Camera(config.camera) as camera:
-        log.info("Boucle de surveillance démarrée")
+        log.info("Monitoring loop started")
         while True:
             frame = camera.read_detection_frame()
             triggered = detector.process(frame, now=time.monotonic())
             if triggered:
                 score = detector.last_motion_score
-                log.info("Mouvement détecté (score=%.3f), capture rafale", score)
+                log.info("Motion detected (score=%.3f), capturing burst", score)
                 captured = _capture_burst(camera, uploader, config, score)
-                log.info("Rafale terminée : %d photo(s) enqueue(s)", captured)
+                log.info("Burst done: %d photo(s) enqueued", captured)
             sent = uploader.flush()
             if sent:
-                log.info("%d photo(s) envoyée(s) au serveur", sent)
+                log.info("%d photo(s) uploaded to the server", sent)
 
             now_mono = time.monotonic()
             if now_mono - last_cleanup_at > CLEANUP_INTERVAL_SECONDS:
                 deleted = uploader.cleanup_old_sent()
                 if deleted:
-                    log.info("Cleanup : %d photo(s) ancienne(s) supprimée(s) de sent/", deleted)
+                    log.info("Cleanup: removed %d old photo(s) from sent/", deleted)
                 last_cleanup_at = now_mono
 
 
@@ -116,15 +116,15 @@ def main() -> None:
     )
 
     config = load(args.config)
-    log.info("Config chargée depuis %s", args.config if args.config.exists() else "(défaut)")
-    log.info("Serveur cible : %s", config.upload.server_url)
+    log.info("Config loaded from %s", args.config if args.config.exists() else "(defaults)")
+    log.info("Target server: %s", config.upload.server_url)
 
     _install_signal_handlers()
 
     try:
         run(config)
     except StopRequested:
-        log.info("Arrêt demandé, sortie propre")
+        log.info("Shutdown requested, exiting cleanly")
 
 
 if __name__ == "__main__":

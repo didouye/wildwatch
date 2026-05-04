@@ -1,135 +1,135 @@
-# Roadmap WildWatch
+# WildWatch roadmap
 
-## V0.1 — Setup et preuve de concept
+## V0.1 -- Setup and proof of concept
 
-L'objectif est de valider le matériel et la chaîne complète de bout en bout.
+Goal: validate the hardware and the full end-to-end pipeline.
 
-- [x] Initialiser le repo Git et la structure du monorepo
-- [x] Configurer la caméra Module 3 NoIR sur DietPi (libcamera + dtoverlay imx708)
-- [x] Ajouter l'utilisateur `dietpi` aux groupes `video` et `render`
-- [x] Vérifier que la caméra capture une photo (via picamera2 — voir note ci-dessous)
-- [x] Installer Python 3.13 + uv 0.11 sur le RPi
-- [x] Écrire un script minimal qui capture une photo et l'envoie en HTTP à un endpoint de test
-- [x] Côté serveur : endpoint FastAPI minimal qui reçoit et stocke une photo
-- [x] Tester le serveur FastAPI en local
-- [x] Déployer le code capture sur le RPi (clone + uv sync --system-site-packages)
-- [x] Valider la chaîne complète : RPi capture → HTTP POST → serveur stocke
+- [x] Initialize the Git repo and the monorepo layout
+- [x] Configure the Camera Module 3 NoIR on DietPi (libcamera + dtoverlay imx708)
+- [x] Add the `dietpi` user to the `video` and `render` groups
+- [x] Verify the camera captures a photo (via picamera2 -- see note below)
+- [x] Install Python 3.13 + uv 0.11 on the RPi
+- [x] Write a minimal script that captures a photo and POSTs it to a test endpoint
+- [x] Server side: minimal FastAPI endpoint that receives and stores a photo
+- [x] Test the FastAPI server locally
+- [x] Deploy the capture code on the RPi (clone + uv sync --system-site-packages)
+- [x] Validate the full chain: RPi capture -> HTTP POST -> server stores
 
-### Notes V0.1
+### V0.1 notes
 
-**Bug rpicam-apps v1.11.1 sur RPi 2 v1.1 + Camera Module 3** : les outils CLI
-`rpicam-still` et `rpicam-jpeg` se terminent en code 0 sans produire de fichier
-(et `rpicam-still --version` segfault à la sortie après avoir affiché la version).
-La capture via `picamera2` (Python) fonctionne parfaitement. Comme notre code
-utilise picamera2 directement, ce bug n'est pas bloquant. À surveiller dans les
-mises à jour de `rpicam-apps`.
+**rpicam-apps v1.11.1 bug on RPi 2 v1.1 + Camera Module 3:** the CLI tools
+`rpicam-still` and `rpicam-jpeg` exit 0 without producing a file (and
+`rpicam-still --version` segfaults at exit after printing the version).
+Capture via `picamera2` (Python) works perfectly. Our code uses picamera2
+directly so this is not a blocker. Worth re-checking after future
+`rpicam-apps` releases.
 
-## V0.2 — Détection de mouvement
+## V0.2 -- Motion detection
 
-- [x] Détection par background subtraction adaptatif (numpy + picamera2 lores YUV)
-- [x] Mode preview 640x480 + bascule `switch_mode_and_capture_file` vers 2304x1296
-      pour les captures (contournement de la limite CMA 64 Mo du RPi 2 v1.1)
-- [x] Seuils de déclenchement configurables (pixel_threshold, area_threshold)
-- [x] Cooldown entre les captures (anti-spam, 5s par défaut)
-- [x] Capture en rafale (3 photos par défaut, intervalle 0.5s)
-- [x] Fichier de configuration TOML (`~/wildwatch/config.toml`, `/etc/wildwatch/` en V1.0)
-- [x] Tests TDD du détecteur de mouvement (9 tests verts)
-- [x] Validation bout en bout sur le RPi : détection → capture rafale → upload HTTP
+- [x] Adaptive background-subtraction detection (numpy + picamera2 lores YUV)
+- [x] 640x480 preview + `switch_mode_and_capture_request` to 2304x1296 for
+      stills (workaround for the 64 MB CMA limit on the RPi 2 v1.1)
+- [x] Configurable trigger thresholds (pixel_threshold, area_threshold)
+- [x] Cooldown between captures (anti-spam, 5s default)
+- [x] Burst capture (3 photos by default, 0.5s spacing)
+- [x] TOML configuration (`~/wildwatch/config.toml`, `/etc/wildwatch/` in V1.0)
+- [x] TDD tests for the motion detector (9 tests green)
+- [x] End-to-end validation on the RPi: detection -> burst -> HTTP upload
 
-### Notes V0.2
+### V0.2 notes
 
-**CMA limité à 64 Mo sur RPi 2 v1.1** : la pleine résolution 4608×2592 est
-inaccessible car le V4L2 driver alloue toujours 4 buffers minimum
-(4 × 36 Mo > 64 Mo). On utilise 2304×1296 (3 MP, ~36 Mo) qui tient large.
-Augmenter le CMA via `cma=256M` dans `cmdline.txt` cause un kernel panic au boot
-sur cette plateforme. À explorer en V2+ : `dtoverlay=...,cma-size=...` dans
-`config.txt` (plus sûr car le bootloader peut fallback).
+**CMA capped at 64 MB on the RPi 2 v1.1:** the full 4608x2592 resolution is
+out of reach because the V4L2 driver always allocates a minimum of 4 buffers
+(4 x 36 MB > 64 MB). We stick to 2304x1296 (3 MP, ~36 MB) which fits
+comfortably. Pushing CMA via `cma=256M` in `cmdline.txt` triggers a kernel
+panic at boot on this platform. Worth exploring in V2+:
+`dtoverlay=...,cma-size=...` in `config.txt` (safer because the bootloader
+can fall back).
 
-**DietPi blackliste par défaut `bcm2835_isp` et `bcm2835_codec`** dans
-`/etc/modprobe.d/dietpi-disable_rpi_camera.conf` et `dietpi-disable_rpi_codec.conf`.
-Sans ces modules, libcamera ne voit pas la caméra. Le script `_recovery/setup_rpi.sh`
-les supprime.
+**DietPi blacklists `bcm2835_isp` and `bcm2835_codec` by default** through
+`/etc/modprobe.d/dietpi-disable_rpi_camera.conf` and
+`dietpi-disable_rpi_codec.conf`. Without those modules libcamera does not see
+the camera. The `_recovery/setup_rpi.sh` script removes both files.
 
-**Firmware variant** : avec `gpu_mem_1024=16` (défaut DietPi), le firmware utilise
-`start_cd.elf` (cut-down) qui ne supporte pas la caméra. On force `gpu_mem_1024=96`
-pour avoir le `start.elf` complet.
+**Firmware variant:** with `gpu_mem_1024=16` (DietPi default) the firmware
+uses `start_cd.elf` (cut-down), which has no camera support. We bump the
+value to `gpu_mem_1024=96` to load the full `start.elf`.
 
-## V0.3 — Upload fiable et service systemd
+## V0.3 -- Reliable upload and systemd service
 
-- [x] File d'attente locale en `~/wildwatch/queue/` + dossier `dead/` pour les
-      4xx irrécupérables (auth, payload invalide)
-- [x] Upload avec retry intelligent : 408/425/429/5xx + erreurs réseau restent
-      en queue, autres 4xx partent en dead-letter
-- [x] Nettoyage périodique de `~/wildwatch/sent/` (toutes les heures, photos
-      plus vieilles que `sent_retention_days`)
-- [x] Métadonnées JSON enrichies par photo : motion_score, frame_index,
-      burst_size, camera (résolution), sensor (modèle, exposure, gain, lux),
+- [x] Local queue at `~/wildwatch/queue/` plus a `dead/` folder for the
+      permanent 4xx failures (auth, invalid payload)
+- [x] Smart retry: 408/425/429/5xx + network errors stay in the queue,
+      other 4xx go to dead-letter
+- [x] Periodic cleanup of `~/wildwatch/sent/` (hourly, removes photos
+      older than `sent_retention_days`)
+- [x] Enriched JSON metadata per photo: motion_score, frame_index,
+      burst_size, camera (resolution), sensor (model, exposure, gain, lux),
       system (hostname, cpu_temp, memory, load)
-- [x] Service systemd `wildwatch-capture.service` (Restart=on-failure,
-      StartLimit, hardening), démarrage automatique au boot
-- [x] Auth par clé API : `WILDWATCH_API_KEY` côté serveur, header
-      `Authorization: Bearer <key>` côté capture, sidecar JSON persisté côté
-      serveur
-- [x] 27 tests TDD verts (20 capture + 7 server)
+- [x] systemd service `wildwatch-capture.service` (Restart=on-failure,
+      StartLimit, hardening), starts automatically at boot
+- [x] API-key auth: `WILDWATCH_API_KEY` server side, `Authorization: Bearer
+      <key>` client side, JSON sidecar persisted server side
+- [x] 27 TDD tests green (20 capture + 7 server)
 
-## V0.4 — Serveur web fonctionnel
+## V0.4 -- Functional web server
 
-- [ ] API REST complète (CRUD photos, pagination, filtres)
-- [ ] Stockage photos organisé par date (`/data/photos/YYYY/MM/DD/`)
-- [ ] Base SQLite pour les métadonnées
-- [ ] Génération automatique de thumbnails (150px, 400px, 800px)
-- [ ] Interface web : galerie avec pagination
-- [ ] Interface web : vue détail d'une photo avec métadonnées
-- [ ] Interface web : filtres par date
-- [ ] Authentification web (login/mot de passe)
+- [ ] Full REST API (photo CRUD, pagination, filters)
+- [ ] Photo storage organized by date (`/data/photos/YYYY/MM/DD/`)
+- [ ] SQLite metadata store
+- [ ] Automatic thumbnail generation (150 px, 400 px, 800 px)
+- [ ] Web UI: paginated gallery
+- [ ] Web UI: photo detail with metadata
+- [ ] Web UI: date filters
+- [ ] Web auth (username/password)
 
-## V0.5 — Partage et gestion
+## V0.5 -- Sharing and management
 
-- [ ] Tags manuels sur les photos
-- [ ] Favoris
-- [ ] Lien de partage public pour une photo
-- [ ] Page de statistiques (photos/jour, activité par heure, etc.)
-- [ ] Suppression en masse
+- [ ] Manual tags on photos
+- [ ] Favorites
+- [ ] Public share link for a photo
+- [ ] Stats page (photos/day, activity per hour, etc.)
+- [ ] Bulk delete
 
-## V1.0 — Déploiement production
+## V1.0 -- Production deployment
 
-- [ ] Dockerfile + docker-compose.yml pour le serveur
-- [ ] Reverse proxy Caddy avec HTTPS automatique
-- [ ] Script d'installation pour le RPi (dépendances, systemd, répertoires)
-- [ ] Rate limiting sur l'API
-- [ ] Documentation de déploiement
-- [ ] Tests
+- [ ] Dockerfile + docker-compose.yml for the server
+- [ ] Caddy reverse proxy with automatic HTTPS
+- [ ] RPi installer script (dependencies, systemd, directories)
+- [ ] API rate limiting
+- [ ] Deployment documentation
+- [ ] Test suite for the server
 
 ---
 
-## Futur (V2+)
+## Future (V2+)
 
-### Identification automatique des espèces
-- [ ] Intégrer Google SpeciesNet côté serveur
-- [ ] Analyse automatique à la réception des photos
-- [ ] Afficher l'espèce détectée et le score de confiance dans l'interface
-- [ ] Filtrer les photos par espèce
+### Automatic species identification
+- [ ] Integrate Google SpeciesNet on the server
+- [ ] Run inference on every received photo
+- [ ] Show the predicted species and confidence in the UI
+- [ ] Filter photos by species
 
-### Optimisation batterie
-- [ ] Ajouter un capteur PIR (HC-SR501 ou AM312) pour réveiller le RPi
-- [ ] Mode veille basse entre les détections
-- [ ] Désactiver le dongle WiFi entre les envois
-- [ ] Mesurer et optimiser la consommation
+### Battery operation
+- [ ] Add a PIR sensor (HC-SR501 or AM312) to wake the RPi
+- [ ] Low-power sleep between detections
+- [ ] Disable the WiFi dongle between uploads
+- [ ] Measure and optimize power draw
 
-### Vision nocturne
-- [ ] Ajouter un illuminateur IR
-- [ ] Basculer automatiquement jour/nuit selon la luminosité
-- [ ] Ajuster les paramètres caméra pour la nuit (ISO, exposition)
+### Night vision
+- [ ] Add an IR illuminator
+- [ ] Auto-switch day/night based on ambient light
+- [ ] Tune camera parameters for night (ISO, exposure)
 
-### Multi-caméras
-- [ ] Support de plusieurs RPi envoyant vers le même serveur
-- [ ] Identifier chaque caméra dans l'interface
-- [ ] Dashboard multi-caméras
+### Multi-camera
+- [ ] Support multiple RPis pushing to a single server
+- [ ] Identify each camera in the UI
+- [ ] Multi-camera dashboard
 
-### Alertes
-- [ ] Notification en temps réel (email, Telegram, webhook) quand un animal est détecté
-- [ ] Alertes configurables par espèce
+### Alerts
+- [ ] Real-time notifications (email, Telegram, webhook) on detection
+- [ ] Per-species alert rules
 
-### Vidéo
-- [ ] Capture de courtes vidéos en plus des photos
-- [ ] Streaming live (optionnel)
+### Video
+- [ ] Capture short videos in addition to stills
+- [ ] Live streaming (optional)

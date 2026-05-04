@@ -6,19 +6,19 @@
 #     "questionary>=2.0",
 # ]
 # ///
-"""Installateur orchestrateur WildWatch.
+"""WildWatch deployment orchestrator.
 
-Lancé depuis la racine du repo sur le PC de l'opérateur :
+Run from the repo root on your dev box:
     uv run _recovery/install_wildwatch.py
 
-Découvre une cible RPi sur le réseau, déploie le code, configure la clé API,
-installe le service systemd, et confirme que tout tourne.
+Discovers a RPi target on the network, deploys the code, configures the API
+key, installs the systemd service, and confirms the service is running.
 
-Pré-requis :
-- uv installé localement (sinon le shebang ne marche pas)
-- rsync installé localement
-- Clé SSH configurée pour dietpi@<host> (BatchMode)
-- DietPi flashé sur le RPi avec WiFi configuré
+Requirements:
+- uv installed locally (the shebang relies on it)
+- rsync installed locally
+- SSH key configured for dietpi@<host> (BatchMode)
+- DietPi flashed on the RPi with WiFi configured
 """
 
 from __future__ import annotations
@@ -44,7 +44,7 @@ SETUP_RPI_SCRIPT = REPO_ROOT / "_recovery" / "setup_rpi.sh"
 INSTALL_SYSTEMD_SCRIPT = REPO_ROOT / "_recovery" / "install_systemd.sh"
 API_KEY_FILE = REPO_ROOT / "_recovery" / "api_key.secret"
 
-# OUIs Raspberry Pi Foundation (préfixes MAC).
+# Raspberry Pi Foundation OUIs (MAC prefixes).
 RPI_OUIS = ("b8:27:eb", "dc:a6:32", "e4:5f:01", "2c:cf:67")
 SSH_USER = "dietpi"
 
@@ -74,7 +74,7 @@ def _try_ping(host: str, timeout: int = 1) -> bool:
 
 
 def _arp_scan_rpis() -> list[tuple[str, str]]:
-    """Retourne la liste (ip, mac) des entrées ARP qui matchent les OUIs RPi."""
+    """Return the list of (ip, mac) ARP entries that match a RPi OUI."""
     res = subprocess.run(["arp", "-an"], capture_output=True, text=True, check=False)
     if res.returncode != 0:
         return []
@@ -91,29 +91,29 @@ def _arp_scan_rpis() -> list[tuple[str, str]]:
 
 
 def discover_target() -> str:
-    """Trouve un hôte RPi et retourne son adresse SSH (hostname ou IP)."""
-    console.log("[bold]→[/bold] Découverte des Raspberry Pi sur le réseau…")
+    """Find a RPi host and return its SSH address (hostname or IP)."""
+    console.log("[bold]>[/bold] Discovering Raspberry Pi devices on the network...")
 
-    # 1) Essai mDNS dietpi.local (le défaut DietPi).
+    # 1) Try mDNS dietpi.local (the DietPi default).
     if _try_ping("dietpi.local"):
-        console.log("[green]✓[/green] [bold]dietpi.local[/bold] répond")
+        console.log("[green]ok[/green] [bold]dietpi.local[/bold] responds")
         if questionary.confirm(
-            "Cibler dietpi.local ?", default=True, auto_enter=False
+            "Target dietpi.local?", default=True, auto_enter=False
         ).ask():
             return "dietpi.local"
 
-    # 2) Scan ARP filtré OUI Raspberry Pi.
+    # 2) ARP scan filtered by Raspberry Pi OUIs.
     rpis = _arp_scan_rpis()
     if rpis:
-        console.log(f"[green]✓[/green] {len(rpis)} RPi détecté(s) dans la table ARP")
-        choices = [f"{ip}  ({mac})" for ip, mac in rpis] + ["[ Saisir une autre adresse ]"]
-        choice = questionary.select("Cible ?", choices=choices).ask()
+        console.log(f"[green]ok[/green] {len(rpis)} RPi found in the ARP table")
+        choices = [f"{ip}  ({mac})" for ip, mac in rpis] + ["[ Enter another address ]"]
+        choice = questionary.select("Target?", choices=choices).ask()
         if choice and not choice.startswith("["):
             return choice.split()[0]
 
-    # 3) Saisie manuelle.
+    # 3) Manual entry.
     return questionary.text(
-        "IP ou hostname du RPi :", validate=lambda v: bool(v.strip()) or "Adresse vide"
+        "RPi IP or hostname:", validate=lambda v: bool(v.strip()) or "Empty address"
     ).ask()
 
 
@@ -148,17 +148,17 @@ def assert_ssh_ok(host: str) -> None:
         console.print(
             Panel(
                 Text.from_markup(
-                    f"[red]✗ SSH non-interactif refusé pour {SSH_USER}@{host}[/red]\n\n"
-                    "Configure d'abord ta clé SSH :\n"
+                    f"[red]x Non-interactive SSH refused for {SSH_USER}@{host}[/red]\n\n"
+                    "Set up your SSH key first:\n"
                     f"  [bold]ssh-copy-id {SSH_USER}@{host}[/bold]\n\n"
-                    "Puis relance ce script."
+                    "Then re-run this script."
                 ),
                 title="SSH",
                 border_style="red",
             )
         )
         sys.exit(1)
-    console.log(f"[green]✓[/green] SSH OK ({SSH_USER}@{host})")
+    console.log(f"[green]ok[/green] SSH OK ({SSH_USER}@{host})")
 
 
 # ---------------------------------------------------------------------------
@@ -179,10 +179,10 @@ grep -q "^gpu_mem_1024=16" /boot/firmware/config.txt 2>/dev/null && echo "GPU_ME
 
 
 def inspect_target(host: str) -> TargetState:
-    console.log(f"[bold]→[/bold] Inspection de {host}…")
+    console.log(f"[bold]>[/bold] Inspecting {host}...")
     res = ssh_run(host, INSPECT_SCRIPT, capture=True)
     if res.returncode != 0:
-        console.print(f"[red]✗ Inspection échouée :[/red]\n{res.stderr}")
+        console.print(f"[red]x Inspection failed:[/red]\n{res.stderr}")
         sys.exit(1)
 
     lines = [ln.strip() for ln in res.stdout.splitlines() if ln.strip()]
@@ -197,14 +197,14 @@ def inspect_target(host: str) -> TargetState:
     )
 
     if config_exists:
-        masked = (state.api_key[:6] + "…") if state.api_key else "(absente)"
+        masked = (state.api_key[:6] + "...") if state.api_key else "(none)"
         console.log(
-            f"[yellow]↻[/yellow] Installation existante détectée — server_url="
+            f"[yellow]~[/yellow] Existing install detected -- server_url="
             f"{state.server_url}, api_key={masked}, service="
-            f"{'actif' if state.service_active else 'inactif'}"
+            f"{'active' if state.service_active else 'inactive'}"
         )
     else:
-        console.log("[blue]✦[/blue] Pas d'installation existante — setup neuf")
+        console.log("[blue]+[/blue] No existing install -- fresh setup")
     return state
 
 
@@ -225,32 +225,36 @@ def local_ip_guess() -> str:
 
 
 def decide_server(state: TargetState) -> tuple[str, str, bool]:
-    """Retourne (server_url, api_key, server_local).
+    """Return (server_url, api_key, server_local).
 
-    Si state.config_exists, on réutilise. Sinon on demande.
+    If state.config_exists, reuse the existing values. Otherwise, prompt.
     """
     if state.config_exists and state.server_url and state.api_key:
-        console.log("[green]✓[/green] Réutilisation de la config existante")
+        console.log("[green]ok[/green] Reusing existing config")
         return state.server_url, state.api_key, False
 
     if questionary.confirm(
-        "Le serveur WildWatch est-il déjà déployé ailleurs ?", default=False
+        "Is the WildWatch server already deployed somewhere?", default=False
     ).ask():
         url = questionary.text(
-            "URL du serveur (ex: http://192.168.1.10:8000) :",
-            validate=lambda v: v.startswith("http") or "URL invalide",
+            "Server URL (e.g. http://192.168.1.10:8000):",
+            validate=lambda v: v.startswith("http") or "Invalid URL",
         ).ask()
-        key = questionary.text("Clé API existante :", validate=lambda v: bool(v) or "Vide").ask()
+        key = questionary.text(
+            "Existing API key:", validate=lambda v: bool(v) or "Empty"
+        ).ask()
         return url, key, False
 
-    # Setup local
+    # Local server setup
     api_key = secrets.token_urlsafe(32)
     API_KEY_FILE.parent.mkdir(parents=True, exist_ok=True)
     API_KEY_FILE.write_text(api_key + "\n")
     API_KEY_FILE.chmod(0o600)
     default_url = f"http://{local_ip_guess()}:8000"
-    url = questionary.text("URL du serveur local :", default=default_url).ask()
-    console.log(f"[green]✓[/green] Nouvelle clé API générée → {API_KEY_FILE.relative_to(REPO_ROOT)}")
+    url = questionary.text("Local server URL:", default=default_url).ask()
+    console.log(
+        f"[green]ok[/green] New API key written to {API_KEY_FILE.relative_to(REPO_ROOT)}"
+    )
     return url, api_key, True
 
 
@@ -260,17 +264,17 @@ def decide_server(state: TargetState) -> tuple[str, str, bool]:
 
 
 def run_setup_rpi(host: str, gpu_mem_low_before: bool) -> bool:
-    """Lance setup_rpi.sh sur le RPi. Retourne True si reboot nécessaire."""
-    console.log("[bold]→[/bold] setup_rpi.sh sur le RPi…")
+    """Run setup_rpi.sh on the RPi. Returns True if a reboot is required."""
+    console.log("[bold]>[/bold] Running setup_rpi.sh on the RPi...")
     with SETUP_RPI_SCRIPT.open() as fp:
         res = subprocess.run(
             [*_ssh_args(host), "bash -s"], stdin=fp, check=False
         )
     if res.returncode != 0:
-        console.print("[red]✗ setup_rpi.sh a échoué[/red]")
+        console.print("[red]x setup_rpi.sh failed[/red]")
         sys.exit(1)
 
-    # Vérifie si gpu_mem a été modifié (= était low avant et est OK maintenant).
+    # Detect whether gpu_mem was actually changed (was low, is now ok).
     if gpu_mem_low_before:
         check = ssh_run(
             host,
@@ -278,33 +282,33 @@ def run_setup_rpi(host: str, gpu_mem_low_before: bool) -> bool:
             capture=True,
         )
         if "OK" in check.stdout:
-            console.log("[yellow]↻[/yellow] gpu_mem_1024 modifié, reboot requis")
+            console.log("[yellow]~[/yellow] gpu_mem_1024 changed, reboot required")
             return True
-    console.log("[green]✓[/green] setup système OK")
+    console.log("[green]ok[/green] system setup complete")
     return False
 
 
 def reboot_and_wait(host: str) -> None:
-    console.log("[bold]→[/bold] Reboot du RPi…")
+    console.log("[bold]>[/bold] Rebooting the RPi...")
     ssh_run(host, "sudo /sbin/reboot", capture=True)
-    with console.status("Attente du retour…", spinner="dots"):
+    with console.status("Waiting for the host to come back...", spinner="dots"):
         import time
 
         time.sleep(10)
         for _ in range(60):
             if _try_ping(host):
-                # Donne quelques secondes de plus pour SSH
+                # Give SSH a few extra seconds
                 time.sleep(3)
                 if ssh_run(host, "true", capture=True).returncode == 0:
-                    console.log(f"[green]✓[/green] {host} est de retour")
+                    console.log(f"[green]ok[/green] {host} is back")
                     return
             time.sleep(5)
-    console.print(f"[red]✗ {host} n'est pas revenu après reboot[/red]")
+    console.print(f"[red]x {host} did not come back after reboot[/red]")
     sys.exit(1)
 
 
 def rsync_code(host: str) -> None:
-    console.log("[bold]→[/bold] rsync du code vers ~/wildwatch-src/…")
+    console.log("[bold]>[/bold] rsync code to ~/wildwatch-src/...")
     cmd = [
         "rsync",
         "-az",
@@ -324,13 +328,13 @@ def rsync_code(host: str) -> None:
     ]
     res = subprocess.run(cmd, check=False)
     if res.returncode != 0:
-        console.print("[red]✗ rsync a échoué[/red]")
+        console.print("[red]x rsync failed[/red]")
         sys.exit(1)
-    console.log("[green]✓[/green] code synchronisé")
+    console.log("[green]ok[/green] code synced")
 
 
 def setup_venv(host: str) -> None:
-    console.log("[bold]→[/bold] Création/mise à jour du venv (uv sync)…")
+    console.log("[bold]>[/bold] Creating/updating the venv (uv sync)...")
     cmd = (
         "cd ~/wildwatch-src/capture && "
         "if [ ! -d .venv ]; then "
@@ -341,9 +345,9 @@ def setup_venv(host: str) -> None:
     )
     res = ssh_run(host, cmd, capture=True)
     if res.returncode != 0:
-        console.print(f"[red]✗ uv sync a échoué :[/red]\n{res.stdout}\n{res.stderr}")
+        console.print(f"[red]x uv sync failed:[/red]\n{res.stdout}\n{res.stderr}")
         sys.exit(1)
-    console.log("[green]✓[/green] venv prêt")
+    console.log("[green]ok[/green] venv ready")
 
 
 CONFIG_TEMPLATE = """\
@@ -377,43 +381,43 @@ request_timeout_seconds = 60.0
 
 
 def write_config(host: str, server_url: str, api_key: str) -> None:
-    console.log("[bold]→[/bold] Écriture de ~/wildwatch/config.toml…")
+    console.log("[bold]>[/bold] Writing ~/wildwatch/config.toml...")
     body = CONFIG_TEMPLATE.format(server_url=server_url, api_key=api_key)
     cmd = "mkdir -p ~/wildwatch && cat > ~/wildwatch/config.toml"
     res = subprocess.run(
         [*_ssh_args(host), cmd], input=body, text=True, check=False, capture_output=True
     )
     if res.returncode != 0:
-        console.print(f"[red]✗ Écriture config.toml échouée :[/red]\n{res.stderr}")
+        console.print(f"[red]x writing config.toml failed:[/red]\n{res.stderr}")
         sys.exit(1)
-    console.log("[green]✓[/green] config.toml écrit")
+    console.log("[green]ok[/green] config.toml written")
 
 
 def install_systemd(host: str) -> None:
-    console.log("[bold]→[/bold] install_systemd.sh sur le RPi…")
+    console.log("[bold]>[/bold] Running install_systemd.sh on the RPi...")
     with INSTALL_SYSTEMD_SCRIPT.open() as fp:
         res = subprocess.run([*_ssh_args(host), "bash -s"], stdin=fp, check=False)
     if res.returncode != 0:
-        console.print("[red]✗ install_systemd.sh a échoué[/red]")
+        console.print("[red]x install_systemd.sh failed[/red]")
         sys.exit(1)
-    console.log("[green]✓[/green] service systemd installé")
+    console.log("[green]ok[/green] systemd service installed")
 
 
 def restart_and_verify(host: str) -> None:
-    console.log("[bold]→[/bold] Restart du service et vérification…")
+    console.log("[bold]>[/bold] Restarting the service and checking status...")
     ssh_run(host, "sudo systemctl restart wildwatch-capture", capture=True)
     import time
 
     time.sleep(3)
     res = ssh_run(host, "systemctl is-active wildwatch-capture", capture=True)
     if "active" not in res.stdout:
-        console.print(f"[red]✗ service inactif après restart : {res.stdout.strip()}[/red]")
+        console.print(f"[red]x service inactive after restart: {res.stdout.strip()}[/red]")
         logs = ssh_run(
             host, "sudo journalctl -u wildwatch-capture --no-pager -n 20", capture=True
         )
         console.print(logs.stdout)
         sys.exit(1)
-    console.log("[green]✓[/green] service actif")
+    console.log("[green]ok[/green] service active")
 
 
 # ---------------------------------------------------------------------------
@@ -424,31 +428,31 @@ def restart_and_verify(host: str) -> None:
 def main() -> None:
     if not SETUP_RPI_SCRIPT.exists() or not INSTALL_SYSTEMD_SCRIPT.exists():
         console.print(
-            "[red]✗ Lance ce script depuis la racine du repo "
-            "(sous-scripts manquants dans _recovery/).[/red]"
+            "[red]x Run this script from the repo root "
+            "(sub-scripts missing in _recovery/).[/red]"
         )
         sys.exit(1)
     if shutil.which("rsync") is None:
-        console.print("[red]✗ rsync introuvable. Installe rsync localement.[/red]")
+        console.print("[red]x rsync not found. Install rsync locally first.[/red]")
         sys.exit(1)
 
     console.print(
         Panel(
-            Text("WildWatch — Installateur RPi", style="bold cyan", justify="center"),
+            Text("WildWatch -- RPi installer", style="bold cyan", justify="center"),
             border_style="cyan",
         )
     )
 
     host = discover_target()
     if not host:
-        console.print("[yellow]Annulé[/yellow]")
+        console.print("[yellow]Cancelled[/yellow]")
         sys.exit(0)
     assert_ssh_ok(host)
 
     state = inspect_target(host)
     server_url, api_key, server_local = decide_server(state)
 
-    # Vérifie gpu_mem_1024 avant et après pour décider du reboot.
+    # Probe gpu_mem_1024 before/after to know whether a reboot is needed.
     pre = ssh_run(
         host, "grep -q '^gpu_mem_1024=16' /boot/firmware/config.txt && echo LOW || echo OK",
         capture=True,
@@ -464,31 +468,32 @@ def main() -> None:
     install_systemd(host)
     restart_and_verify(host)
 
-    # Récap final
+    # Final summary
     summary = Text()
-    summary.append("✓ wildwatch-capture est actif sur ", style="bold green")
+    summary.append("ok wildwatch-capture is active on ", style="bold green")
     summary.append(host, style="bold")
     summary.append("\n\n")
-    summary.append("Logs en direct :\n", style="bold")
+    summary.append("Live logs:\n", style="bold")
     summary.append(f"  ssh {SSH_USER}@{host} 'sudo journalctl -u wildwatch-capture -f'\n")
-    summary.append("\nRedémarrer le service :\n", style="bold")
+    summary.append("\nRestart the service:\n", style="bold")
     summary.append(f"  ssh {SSH_USER}@{host} 'sudo systemctl restart wildwatch-capture'\n")
     if server_local:
-        summary.append("\nLance le serveur sur cette machine :\n", style="bold yellow")
+        summary.append("\nStart the server on this machine:\n", style="bold yellow")
         summary.append(f"  WILDWATCH_API_KEY={api_key} \\\n")
         summary.append("  uv run --directory server uvicorn wildwatch_server.main:app \\\n")
         summary.append("    --host 0.0.0.0 --port 8000\n")
         summary.append(
-            f"\nLa clé est aussi dans {API_KEY_FILE.relative_to(REPO_ROOT)} (gitignored).\n",
+            f"\nThe key is also stored at {API_KEY_FILE.relative_to(REPO_ROOT)} "
+            "(gitignored).\n",
             style="dim",
         )
 
-    console.print(Panel(summary, title="✓ Déploiement terminé", border_style="green"))
+    console.print(Panel(summary, title="Deployment complete", border_style="green"))
 
 
 if __name__ == "__main__":
     try:
         main()
     except KeyboardInterrupt:
-        console.print("\n[yellow]Interrompu par l'utilisateur[/yellow]")
+        console.print("\n[yellow]Interrupted by user[/yellow]")
         sys.exit(130)

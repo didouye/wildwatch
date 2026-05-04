@@ -6,12 +6,11 @@ from wildwatch_capture.config import MotionConfig
 
 
 class MotionDetector:
-    """Détecteur de mouvement par background subtraction adaptatif.
+    """Adaptive background-subtraction motion detector.
 
-    Maintient une frame "background" calculée par moyenne pondérée glissante des
-    frames récentes. Une frame déclenche s'il y a assez de pixels qui diffèrent
-    significativement du background, et que le cooldown depuis le dernier
-    déclenchement est écoulé.
+    Keeps a "background" frame computed as a weighted moving average of recent
+    frames. A frame triggers if enough pixels differ significantly from the
+    background and the cooldown since the last trigger has elapsed.
     """
 
     def __init__(self, config: MotionConfig) -> None:
@@ -26,12 +25,12 @@ class MotionDetector:
         return self._frames_seen > self._cfg.warmup_frames
 
     def process(self, frame: np.ndarray, now: float) -> bool:
-        """Ingère une nouvelle frame (uint8, 2D niveaux de gris) et retourne True
-        si un mouvement vient d'être détecté.
+        """Feed a new frame (uint8, 2D grayscale) and return True if motion was
+        just detected.
 
-        Met toujours à jour le background, même quand un mouvement est détecté,
-        pour s'adapter aux changements progressifs de luminosité et éviter qu'un
-        sujet immobile reste éternellement "détecté".
+        Always updates the background, even when motion is detected, so it
+        adapts to gradual light changes and a static subject does not stay
+        "detected" forever.
         """
         if frame.dtype != np.uint8:
             raise ValueError(f"frame must be uint8, got {frame.dtype}")

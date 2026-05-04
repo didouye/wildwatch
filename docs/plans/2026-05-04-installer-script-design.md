@@ -1,122 +1,126 @@
-# Installer Wildwatch — Design
+# Installer Wildwatch -- Design
 
-Date : 2026-05-04
+Date: 2026-05-04
 
-## Contexte
+## Context
 
-Aujourd'hui le déploiement complet sur un RPi neuf demande sept à huit étapes
-manuelles (rsync, SSH, exécution de scripts, génération de clé API, édition de
-config.toml, redémarrage de service). Documenté dans `docs/SETUP-RPI.md` mais
-fastidieux à reproduire et facile à rater. On veut un script orchestrateur unique
-qui pilote tout depuis le PC de l'opérateur.
+Today, deploying onto a fresh RPi takes seven to eight manual steps (rsync,
+SSH, running scripts, generating an API key, editing config.toml, restarting
+the service). It is documented in `docs/SETUP-RPI.md` but tedious to
+reproduce and easy to get wrong. We want a single orchestrator that drives
+everything from the operator's PC.
 
-## Objectif
+## Goal
 
-Un seul fichier `_recovery/install_wildwatch.py` lancé depuis la racine du repo
-sur Mac ou Linux, qui découvre la cible, sait s'adapter à un RPi neuf ou déjà
-configuré, gère la clé d'API, déploie le code, configure le service systemd,
-et confirme que tout tourne.
+A single file `_recovery/install_wildwatch.py`, run from the repo root on
+macOS or Linux, that discovers the target, adapts to either a fresh or an
+already-configured RPi, manages the API key, deploys the code, configures
+the systemd service, and confirms everything is running.
 
 ## Stack
 
-| Outil        | Rôle                                                          |
-|--------------|---------------------------------------------------------------|
-| Python 3.11+ | Langage. Inline metadata PEP 723 → pas de pyproject à part.   |
-| `uv run`     | Crée un venv éphémère avec les deps déclarées en tête.        |
-| `rich`       | Panels, status, log timestampé, syntax highlight des commandes.|
-| `questionary`| Prompts interactifs : sélection liste, confirm, text input.   |
-| `subprocess` | SSH et rsync — outils déjà configurés et disponibles.         |
+| Tool          | Role                                                               |
+|---------------|--------------------------------------------------------------------|
+| Python 3.11+  | Language. PEP 723 inline metadata -> no separate pyproject needed. |
+| `uv run`      | Spins up an ephemeral venv with the deps declared at the top.      |
+| `rich`        | Panels, status spinners, timestamped log, command syntax highlight.|
+| `questionary` | Interactive prompts: list selection, confirm, text input.          |
+| `subprocess`  | SSH and rsync -- already configured tools we reuse.                |
 
-PEP 723 inline metadata permet `uv run install_wildwatch.py` sans setup. Pas
-besoin de venv dédié, pas de pyproject à maintenir.
+PEP 723 inline metadata makes `uv run install_wildwatch.py` self-bootstrapping.
+No dedicated venv, no pyproject to maintain.
 
-## Pré-requis utilisateur
+## Operator requirements
 
-- `uv` installé sur le PC.
-- `rsync` installé sur le PC (déjà requis pour les déploiements actuels).
-- Clé SSH déjà configurée pour `dietpi@<host>` (le script vérifie en mode
-  `BatchMode=yes` et affiche une erreur claire avec la commande `ssh-copy-id` si KO).
-- Le RPi doit avoir DietPi installé, le WiFi configuré et être joignable.
-- Le script doit être lancé depuis la racine du repo (sinon il échoue tôt).
+- `uv` installed locally.
+- `rsync` installed locally (already required by the existing deployments).
+- An SSH key already authorized for `dietpi@<host>` (the script checks with
+  `BatchMode=yes` and prints a clear `ssh-copy-id` hint on failure).
+- DietPi already flashed and connected to WiFi on the RPi.
+- The script must be run from the repo root (it fails fast otherwise).
 
-## Flux
+## Flow
 
-1. **Découverte cible**
-   - Test de `dietpi.local` via ping. Si répond, demande confirmation.
-   - Sinon, scan ARP filtré par OUI Raspberry Pi (`b8:27:eb`, `dc:a6:32`,
-     `e4:5f:01`, `2c:cf:67`). Préalablement, ping broadcast pour peupler ARP.
-   - Sinon, saisie manuelle de l'IP ou du hostname.
+1. **Target discovery**
+   - Ping `dietpi.local`. If it answers, ask the operator to confirm.
+   - Otherwise, ARP scan filtered by Raspberry Pi OUIs (`b8:27:eb`,
+     `dc:a6:32`, `e4:5f:01`, `2c:cf:67`). A broadcast ping primes the ARP
+     table beforehand.
+   - Otherwise, prompt the operator for an IP or hostname.
 
-2. **Vérification SSH**
+2. **SSH check**
    - `ssh -o BatchMode=yes -o ConnectTimeout=5 dietpi@<target> true`.
-   - Si échec, message d'erreur avec `ssh-copy-id dietpi@<target>` à lancer.
+   - On failure, print an error with the `ssh-copy-id dietpi@<target>`
+     command to run.
 
-3. **Inspection du RPi**
-   - Une seule connexion SSH groupée qui collecte : présence de
-     `~/wildwatch/config.toml`, état actuel du service, valeurs de `server_url`
-     et `api_key` si elles existent.
-   - Détermine le scénario : « réinstall » (config existe) vs « neuf ».
+3. **RPi inspection**
+   - A single grouped SSH call collects: presence of
+     `~/wildwatch/config.toml`, current service state, values of
+     `server_url` and `api_key` if they exist.
+   - Decides between two scenarios: "reinstall" (config exists) vs "fresh".
 
-4. **Décision serveur**
-   - Cas réinstall : on garde l'URL et la clé API existantes.
-   - Cas neuf : prompt « Le serveur est-il déjà déployé ailleurs ? »
-     - Oui : demande URL et clé API à saisir.
-     - Non : génère une nouvelle clé via `secrets.token_urlsafe(32)`,
-       sauvegarde dans `_recovery/api_key.secret` (chmod 600, gitignored
-       par `*.secret`), et propose de configurer l'URL serveur sur l'IP
-       locale du PC + port 8000. À la fin, le script affiche la commande
-       exacte `WILDWATCH_API_KEY=… uv run uvicorn …` à lancer dans un autre
-       terminal pour démarrer le serveur.
+4. **Server decision**
+   - Reinstall: keep the existing URL and API key.
+   - Fresh: prompt "Is the server already deployed somewhere?"
+     - Yes: prompt for the URL and API key.
+     - No: generate a new key via `secrets.token_urlsafe(32)`, save it in
+       `_recovery/api_key.secret` (chmod 600, gitignored via `*.secret`),
+       and offer to configure the server URL with the local PC IP + port
+       8000. At the end the script prints the exact
+       `WILDWATCH_API_KEY=... uv run uvicorn ...` command to start the
+       server in another terminal.
 
-5. **Setup système**
-   - Lance `_recovery/setup_rpi.sh` via SSH (apt + groupes + uv + avahi +
-     blacklists + gpu_mem). Le script existant est idempotent.
-   - Si `gpu_mem_1024` a été modifié (détecté par grep avant/après), reboot et
-     attente du retour de la machine.
+5. **System setup**
+   - Run `_recovery/setup_rpi.sh` over SSH (apt + groups + uv + avahi +
+     blacklists + gpu_mem). The existing script is idempotent.
+   - If `gpu_mem_1024` was changed (detected via grep before/after), reboot
+     and wait for the host to come back.
 
-6. **Déploiement code**
-   - `rsync` du repo vers `~/wildwatch-src/` avec les exclusions habituelles
+6. **Code deployment**
+   - `rsync` the repo to `~/wildwatch-src/` with the usual excludes
      (`.venv`, `__pycache__`, `data/`, `_recovery/sd_backup/`, `.git/`).
 
-7. **Venv et dépendances**
-   - `uv venv --system-site-packages --python /usr/bin/python3` puis
-     `uv sync --no-dev --active` côté RPi.
+7. **Venv and dependencies**
+   - `uv venv --system-site-packages --python /usr/bin/python3`, then
+     `uv sync --no-dev --active` on the RPi.
 
-8. **Configuration runtime**
-   - Génère le `~/wildwatch/config.toml` côté RPi via heredoc (template
-     embarqué dans le Python). Les valeurs préservées (URL, clé API) sont
-     substituées.
+8. **Runtime configuration**
+   - Generate `~/wildwatch/config.toml` on the RPi from a heredoc (template
+     embedded in the Python source). The preserved values (URL, API key)
+     are substituted in.
 
-9. **Service systemd**
-   - Lance `_recovery/install_systemd.sh` via SSH. Idempotent. Le service est
-     restart pour reprendre la nouvelle config.
+9. **systemd service**
+   - Run `_recovery/install_systemd.sh` over SSH. Idempotent. The service is
+     restarted so the new config takes effect.
 
-10. **Vérifications finales**
-    - `systemctl is-active wildwatch-capture` → doit être `active`.
-    - Affiche les cinq dernières lignes du journal pour confirmer la boucle de
-      surveillance démarrée.
-    - Affiche un récap final : commande pour suivre les logs, commande pour
-      lancer le serveur si setup local.
+10. **Final checks**
+    - `systemctl is-active wildwatch-capture` must return `active`.
+    - Print the last five journal lines to confirm the monitoring loop
+      started.
+    - Print a final summary: command to follow the logs, command to start
+      the server if the local setup branch was taken.
 
 ## UX
 
-- `rich.console.Console` pour le rendu, avec timestamp pour chaque étape via
+- `rich.console.Console` for rendering, with a timestamp on every step via
   `console.log()`.
-- `Status` (spinner) pendant les commandes longues (apt install, reboot wait).
-- `Panel` pour le titre du script en haut, et pour le récap final en bas.
-- Couleurs minimales : vert pour succès, rouge pour erreurs, bleu pour les
-  étapes en cours, jaune pour les warnings.
-- `questionary.select` pour les choix de liste (flèches), `questionary.confirm`
-  pour les Y/N, `questionary.text` pour les saisies libres avec validation.
-- Si SIGINT, message clair « Annulé par l'utilisateur » et exit propre.
+- `Status` (spinner) during long commands (apt install, reboot wait).
+- `Panel` for the script title at the top and the final summary at the bottom.
+- Minimal palette: green for success, red for errors, blue for in-flight
+  steps, yellow for warnings.
+- `questionary.select` for list choices (arrow keys),
+  `questionary.confirm` for Y/N prompts, `questionary.text` for free-form
+  input with validation.
+- On SIGINT: clear "Interrupted by user" message and clean exit.
 
-## Idempotence et erreurs
+## Idempotency and errors
 
-- Une étape qui échoue interrompt le script avec un code de sortie non nul et
-  un message exposant la commande à relancer manuellement pour reprendre.
-- Les opérations sont conçues pour être rejouables sans casser l'état :
-  rsync `--delete` mais hors `~/wildwatch/` runtime, `uv sync` réutilise le
-  venv existant, le heredoc config écrase le fichier mais utilise les valeurs
-  préservées par l'inspection initiale.
-- Le script ne crée jamais de fichier hors du repo et de `~/wildwatch*` côté
-  RPi, donc l'utilisateur peut tout supprimer manuellement en cas de pépin.
+- A failing step aborts the script with a non-zero exit code and a message
+  pointing to the command to re-run manually.
+- Operations are designed to be replayable without breaking state: rsync
+  with `--delete` (but never inside `~/wildwatch/` runtime),
+  `uv sync` reuses the existing venv, the config heredoc overwrites the
+  file but uses the values preserved during the initial inspection.
+- The script never creates files outside of the repo and `~/wildwatch*` on
+  the RPi, so the operator can wipe everything manually if anything goes
+  wrong.

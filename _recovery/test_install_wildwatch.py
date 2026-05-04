@@ -3,7 +3,7 @@
 # requires-python = ">=3.11"
 # dependencies = ["pytest>=8", "rich>=13.7", "questionary>=2.0"]
 # ///
-"""Tests unitaires des fonctions pures de l'installateur (sans TTY ni SSH)."""
+"""Unit tests for the installer's pure functions (no TTY, no SSH)."""
 
 from __future__ import annotations
 
@@ -14,18 +14,18 @@ from unittest.mock import patch
 
 import pytest
 
-# Charge install_wildwatch.py comme module sans exécuter main().
+# Load install_wildwatch.py as a module without running main().
 SPEC = importlib.util.spec_from_file_location(
     "install_wildwatch", Path(__file__).parent / "install_wildwatch.py"
 )
 assert SPEC and SPEC.loader
 INSTALL = importlib.util.module_from_spec(SPEC)
-sys.modules["install_wildwatch"] = INSTALL  # requis pour que @dataclass fonctionne
+sys.modules["install_wildwatch"] = INSTALL  # required so @dataclass resolves correctly
 SPEC.loader.exec_module(INSTALL)
 
 
 def test_arp_scan_filters_rpi_ouis() -> None:
-    """Le parser ARP ne doit garder que les MAC qui matchent les OUIs RPi."""
+    """The ARP parser only keeps MAC addresses matching a RPi OUI."""
     fake_arp_output = (
         "? (192.168.0.1) at aa:bb:cc:dd:ee:ff on en0 ifscope [ethernet]\n"
         "? (192.168.0.23) at b8:27:eb:e1:c1:5e on en0 ifscope [ethernet]\n"
@@ -38,8 +38,8 @@ def test_arp_scan_filters_rpi_ouis() -> None:
     ips = [ip for ip, _ in rpis]
     assert "192.168.0.23" in ips
     assert "192.168.0.42" in ips
-    assert "192.168.0.1" not in ips  # OUI non-RPi
-    assert "192.168.0.99" not in ips  # 96:0d… ne matche pas
+    assert "192.168.0.1" not in ips  # non-RPi OUI
+    assert "192.168.0.99" not in ips  # 96:0d... does not match
 
 
 def test_arp_scan_returns_empty_on_failure() -> None:
@@ -58,7 +58,7 @@ def test_config_template_substitutes_values() -> None:
 
 
 def test_config_template_is_valid_toml() -> None:
-    """Le template formaté doit produire un TOML parseable."""
+    """The rendered template must produce parseable TOML."""
     import tomllib
 
     body = INSTALL.CONFIG_TEMPLATE.format(server_url="http://x:8000", api_key="k")
@@ -69,7 +69,7 @@ def test_config_template_is_valid_toml() -> None:
 
 
 def test_local_ip_guess_returns_string() -> None:
-    """Smoke test : doit toujours retourner une IPv4 valide (au pire 127.0.0.1)."""
+    """Smoke test: must always return a valid IPv4 (at worst 127.0.0.1)."""
     ip = INSTALL.local_ip_guess()
     assert isinstance(ip, str)
     parts = ip.split(".")
@@ -78,10 +78,10 @@ def test_local_ip_guess_returns_string() -> None:
 
 
 def test_repo_root_layout() -> None:
-    """Le script doit pouvoir trouver les sous-scripts qu'il appelle."""
+    """The installer must be able to find the sub-scripts it calls."""
     assert INSTALL.SETUP_RPI_SCRIPT.name == "setup_rpi.sh"
     assert INSTALL.INSTALL_SYSTEMD_SCRIPT.name == "install_systemd.sh"
-    # Les fichiers existent vraiment (test d'intégrité).
+    # Sanity check: these files actually exist on disk.
     assert INSTALL.SETUP_RPI_SCRIPT.exists()
     assert INSTALL.INSTALL_SYSTEMD_SCRIPT.exists()
 

@@ -1,4 +1,4 @@
-"""Tests de l'API d'upload (auth + persistance fichier + métadonnées)."""
+"""Tests for the upload API (auth + file persistence + metadata sidecar)."""
 
 from __future__ import annotations
 
@@ -11,10 +11,10 @@ from fastapi.testclient import TestClient
 
 @pytest.fixture
 def client(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> TestClient:
-    """Crée une app fraîche avec PHOTOS_DIR temporaire et auth activée."""
+    """Build a fresh app with a temporary PHOTOS_DIR and auth enabled."""
     monkeypatch.setenv("WILDWATCH_API_KEY", "secret-key-123")
     monkeypatch.setenv("WILDWATCH_PHOTOS_DIR", str(tmp_path / "photos"))
-    # Force le rechargement du module pour relire les env vars
+    # Force reloading the module so it picks up the new env vars
     import importlib
 
     import wildwatch_server.main as main_module
@@ -24,7 +24,7 @@ def client(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> TestClient:
 
 @pytest.fixture
 def client_no_auth(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> TestClient:
-    """Mode dev sans auth (env var absente)."""
+    """Dev mode without auth (env var unset)."""
     monkeypatch.delenv("WILDWATCH_API_KEY", raising=False)
     monkeypatch.setenv("WILDWATCH_PHOTOS_DIR", str(tmp_path / "photos"))
     import importlib
@@ -89,7 +89,7 @@ def test_upload_persists_metadata_sidecar(client: TestClient, tmp_path: Path) ->
 
 
 def test_upload_no_auth_when_api_key_unset(client_no_auth: TestClient) -> None:
-    """Mode dev : pas d'env var → tout passe."""
+    """Dev mode: no env var set → every request goes through."""
     response = client_no_auth.post(
         "/api/photos",
         files={"file": ("test.jpg", b"\xff\xd8\xff\xe0fake", "image/jpeg")},

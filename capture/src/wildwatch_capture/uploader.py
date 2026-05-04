@@ -1,4 +1,4 @@
-"""Envoi des photos au serveur avec file d'attente locale et retry."""
+"""Photo upload to the server with a local queue and retry."""
 
 from __future__ import annotations
 
@@ -17,7 +17,7 @@ log = logging.getLogger(__name__)
 
 
 class Uploader:
-    """Statuses HTTP considérés transitoires : on garde la photo en queue pour réessayer."""
+    """HTTP statuses considered transient: keep the photo queued for retry."""
 
     TRANSIENT_STATUS = {408, 425, 429, 500, 502, 503, 504}
 
@@ -37,10 +37,10 @@ class Uploader:
         captured_at: datetime,
         extra_metadata: dict[str, object] | None = None,
     ) -> Path:
-        """Déplace la photo dans la queue d'envoi et écrit ses métadonnées.
+        """Move the photo into the queue and write its sidecar metadata.
 
-        `extra_metadata` est mergé dans le JSON et peut contenir : motion_score,
-        frame_index, burst_size, camera (résolution, format), sensor (model,
+        `extra_metadata` is merged into the JSON and may include: motion_score,
+        frame_index, burst_size, camera (resolution, format), sensor (model,
         exposure_time, gain), system (cpu_temp, memory, hostname), etc.
         """
         suffix = photo_path.suffix or ".jpg"
@@ -59,9 +59,9 @@ class Uploader:
         return target
 
     def flush(self, now: float | None = None) -> int:
-        """Tente d'envoyer toutes les photos en queue. Retourne le nombre envoyé.
+        """Try to upload every photo in the queue. Returns the count uploaded.
 
-        Respecte `retry_interval_seconds` entre les tentatives globales.
+        Honors `retry_interval_seconds` between successive global attempts.
         """
         now = now if now is not None else time.monotonic()
         if now - self._last_flush_at < self._cfg.retry_interval_seconds and self._last_flush_at > 0:
@@ -77,24 +77,24 @@ class Uploader:
             except httpx.HTTPStatusError as exc:
                 if exc.response.status_code in self.TRANSIENT_STATUS:
                     log.warning(
-                        "Upload temporairement échoué (%s) pour %s, réessai plus tard",
+                        "Upload temporarily failed (%s) for %s, will retry later",
                         exc.response.status_code,
                         photo.name,
                     )
-                    break  # on garde l'ordre, on réessaiera
+                    break  # preserve order, retry next time
                 log.error(
-                    "Upload échoué de manière irrécupérable (%s) pour %s, déplacement en dead-letter",
+                    "Upload failed permanently (%s) for %s, moving to dead-letter",
                     exc.response.status_code,
                     photo.name,
                 )
                 self._move_to_dead(photo)
             except httpx.HTTPError as exc:
-                log.warning("Upload échoué (réseau) pour %s: %s", photo.name, exc)
-                break  # erreur réseau = transitoire, on garde l'ordre
+                log.warning("Upload failed (network) for %s: %s", photo.name, exc)
+                break  # network errors are transient, preserve order
         return sent
 
     def cleanup_old_sent(self, now: datetime | None = None) -> int:
-        """Supprime les photos envoyées plus vieilles que `sent_retention_days`."""
+        """Delete uploaded photos older than `sent_retention_days`."""
         cutoff = (now or datetime.now(timezone.utc)) - timedelta(days=self._cfg.sent_retention_days)
         deleted = 0
         for photo in self.sent_dir.glob("*.jpg"):

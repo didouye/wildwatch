@@ -45,7 +45,7 @@ logs/
 .env.local
 *.secret
 
-# Données runtime (ne pas committer photos ni base)
+# Runtime data (do not commit photos or databases)
 data/
 photos/
 *.db
@@ -57,8 +57,8 @@ photos/
 .coverage
 htmlcov/
 
-# Configuration locale
+# Local configuration
 config.local.toml
 
-# Backups de configs SD card (peuvent contenir credentials WiFi)
+# Backups of SD card configs (may contain WiFi credentials)
 _recovery/sd_backup/

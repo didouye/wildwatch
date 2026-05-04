@@ -20,9 +20,9 @@ packages = ["src/wildwatch_capture"]
 
 [dependency-groups]
 dev = [
-    # numpy est requis par le code (motion.py) mais sur le RPi il est fourni
-    # par le paquet apt python3-picamera2 → on l'utilise via --system-site-packages.
-    # Sur le Mac (tests/dev), on a besoin de l'installer via uv.
+    # numpy is imported by motion.py, but on the RPi it is provided by the
+    # apt package python3-picamera2 → we get it via --system-site-packages.
+    # On a dev box (Mac/Linux for tests), uv installs it explicitly.
     "numpy>=1.24",
     "pytest>=8",
     "ruff>=0.6",

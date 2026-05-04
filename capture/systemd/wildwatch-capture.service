@@ -9,28 +9,28 @@ Type=simple
 User=dietpi
 Group=dietpi
 
-# Le venv est créé dans le checkout du code (~/wildwatch-src/capture/.venv) et
-# l'entry point installé par uv s'appelle "wildwatch-capture".
+# The venv lives next to the checked-out code (~/wildwatch-src/capture/.venv)
+# and the entry point installed by uv is named "wildwatch-capture".
 WorkingDirectory=/home/dietpi/wildwatch-src/capture
 ExecStart=/home/dietpi/wildwatch-src/capture/.venv/bin/wildwatch-capture --log-level INFO
 
-# Redémarrage automatique en cas de crash, mais pas en boucle infinie si tout
-# casse (par exemple caméra non détectée à chaque démarrage).
+# Restart on crash, but not in an infinite loop if everything is broken
+# (for instance: camera missing at every boot).
 Restart=on-failure
 RestartSec=10
 StartLimitIntervalSec=300
 StartLimitBurst=5
 
-# Logs vers le journal systemd (`journalctl -u wildwatch-capture -f`).
+# Logs go to the systemd journal (`journalctl -u wildwatch-capture -f`).
 StandardOutput=journal
 StandardError=journal
 SyslogIdentifier=wildwatch-capture
 
-# Hardening léger.
+# Light hardening.
 NoNewPrivileges=true
 ProtectSystem=strict
 ProtectHome=read-only
-# Le service doit pouvoir écrire dans ~/wildwatch/ (queue, sent, dead, config).
+# The service needs to write inside ~/wildwatch/ (queue, sent, dead, config).
 ReadWritePaths=/home/dietpi/wildwatch
 PrivateTmp=true
 

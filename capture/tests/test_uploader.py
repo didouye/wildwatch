@@ -1,4 +1,4 @@
-"""Tests pour l'uploader (logique de retry + cleanup, sans HTTP réel)."""
+"""Tests for the uploader (retry + cleanup logic, no real HTTP)."""
 
 from __future__ import annotations
 
@@ -21,7 +21,7 @@ def config(tmp_path: Path) -> UploadConfig:
         api_key="",
         queue_dir=str(tmp_path / "queue"),
         sent_dir=str(tmp_path / "sent"),
-        retry_interval_seconds=0.0,  # désactive le throttle pour tester
+        retry_interval_seconds=0.0,  # disable throttling for the tests
         sent_retention_days=7,
         request_timeout_seconds=5.0,
     )
@@ -62,8 +62,8 @@ def test_flush_moves_uploaded_to_sent(config: UploadConfig) -> None:
 
 
 def test_flush_4xx_moves_to_dead_letter(config: UploadConfig) -> None:
-    """Une erreur 4xx (auth, payload invalide) est irrécupérable : on retire de la queue
-    et on la place dans dead/ pour ne pas re-tenter en boucle."""
+    """A 4xx error (auth, invalid payload) is permanent: drop it from the
+    queue and store it in dead/ so we do not retry forever."""
     uploader = Uploader(config)
     write_fake_photo(uploader, "bad.jpg", datetime.now(timezone.utc))
 
@@ -78,7 +78,7 @@ def test_flush_4xx_moves_to_dead_letter(config: UploadConfig) -> None:
 
 
 def test_flush_5xx_keeps_in_queue(config: UploadConfig) -> None:
-    """Une erreur 5xx (serveur down) est transitoire : on garde dans la queue."""
+    """A 5xx error (server down) is transient: keep the photo in the queue."""
     uploader = Uploader(config)
     write_fake_photo(uploader, "later.jpg", datetime.now(timezone.utc))
 
@@ -90,7 +90,7 @@ def test_flush_5xx_keeps_in_queue(config: UploadConfig) -> None:
 
 
 def test_flush_network_error_keeps_in_queue(config: UploadConfig) -> None:
-    """Une erreur de connexion (WiFi down) est transitoire : on garde dans la queue."""
+    """A connection error (WiFi down) is transient: keep the photo queued."""
     uploader = Uploader(config)
     write_fake_photo(uploader, "wifi.jpg", datetime.now(timezone.utc))
 
@@ -119,12 +119,12 @@ def test_flush_throttled_by_retry_interval(config: UploadConfig) -> None:
     with patch("httpx.post", return_value=response) as mock:
         uploader.flush(now=100.0)
         assert mock.call_count == 1
-        # Avant l'expiration de retry_interval, deuxième flush ne fait rien
+        # Before retry_interval expires, the second flush is a no-op
         uploader.flush(now=110.0)
         assert mock.call_count == 1
-        # Après l'expiration, troisième flush passe
+        # After expiry, the third flush would attempt again (queue empty here)
         uploader.flush(now=140.0)
-        assert mock.call_count == 1  # plus de photo en queue, mais on a bien tenté
+        assert mock.call_count == 1  # no photo left to send, but we did try
 
 
 def test_cleanup_old_sent(config: UploadConfig) -> None:
@@ -135,7 +135,7 @@ def test_cleanup_old_sent(config: UploadConfig) -> None:
     recent = uploader.sent_dir / "recent.jpg"
     recent.write_bytes(b"x")
 
-    # Vieillit "old" en arrière de 10 jours
+    # Backdate "old" by 10 days
     cutoff_seconds = (datetime.now(timezone.utc) - timedelta(days=10)).timestamp()
     import os
     os.utime(old, (cutoff_seconds, cutoff_seconds))

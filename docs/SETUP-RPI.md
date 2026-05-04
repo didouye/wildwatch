@@ -1,61 +1,84 @@
-# Setup RPi — Guide complet et galères rencontrées
+# RPi setup -- Full guide and known gotchas
 
-Ce document couvre l'installation complète de wildwatch-capture sur un Raspberry Pi
-2 v1.1 avec DietPi et Camera Module 3 NoIR. Il regroupe toutes les étapes
-chronologiques, les pièges rencontrés en V0.1/V0.2 et leurs contournements,
-afin de pouvoir reproduire l'installation rapidement.
+This document covers the full installation of wildwatch-capture on a Raspberry
+Pi 2 v1.1 with DietPi and the Camera Module 3 NoIR. It walks through the
+chronological steps and lists the gotchas encountered during V0.1/V0.2 along
+with their workarounds, so the install can be reproduced quickly.
 
-## Matériel requis
+## Hardware
 
-| Composant | Modèle utilisé | Notes |
-|-----------|----------------|-------|
-| SBC | Raspberry Pi 2 v1.1 | BCM2836, ARMv7, 1 Go RAM |
-| Caméra | Camera Module 3 NoIR | Capteur IMX708, CSI-2 |
-| Stockage | microSD 32 Go | Format FAT32 + ext4 |
-| Réseau | Dongle WiFi USB | Le RPi 2 n'a pas de WiFi intégré |
-| Alimentation | 5 V / 2 A micro-USB | |
+| Component | Tested model         | Notes                                      |
+|-----------|----------------------|--------------------------------------------|
+| SBC       | Raspberry Pi 2 v1.1  | BCM2836, ARMv7, 1 GB RAM                   |
+| Camera    | Camera Module 3 NoIR | IMX708 sensor, CSI-2                       |
+| Storage   | microSD 32 GB        | FAT32 + ext4 partitions                    |
+| Network   | USB WiFi dongle      | The RPi 2 has no built-in WiFi             |
+| Power     | 5 V / 2 A micro-USB  |                                            |
 
-## 1. Flash de DietPi
+## All-in-one installer (recommended)
 
-1. Télécharger Raspberry Pi Imager (`brew install --cask raspberry-pi-imager`).
-2. Choisir « Raspberry Pi 2 ».
-3. OS : « Other specific-purpose OS » → « DietPi » → version pour RPi 1/2/3/4 (ARMv7).
-4. Storage : la microSD.
-5. Ne pas appliquer de customisation OS dans Imager — on fait la configuration via les fichiers DietPi.
-6. Write et attendre la fin (5-10 min).
+To automate every step (system setup, code deployment, runtime config, systemd
+service, API key generation), use the Python orchestrator:
 
-Une fois flashé, la partition de boot (FAT32) se monte sur Mac sous `/Volumes/NO NAME/` (ou `bootfs` selon les versions).
+```bash
+uv run _recovery/install_wildwatch.py
+```
 
-## 2. Configuration pré-boot sur la SD
+It discovers the RPi (mDNS -> ARP -> manual entry), handles both fresh and
+existing installs, generates or reuses the API key, and drives everything via
+SSH and rsync. It is idempotent: re-run it whenever you want.
 
-Avant le premier boot, éditer ces fichiers sur la partition FAT32 :
+Requirements: `uv` and `rsync` installed locally, plus an SSH key already set
+up for `dietpi@<host>` (the script tells you the `ssh-copy-id` command to run
+otherwise).
+
+The sections below describe the equivalent manual steps -- useful for
+debugging or when you want to control each step yourself.
+
+## 1. Flash DietPi
+
+1. Install Raspberry Pi Imager (`brew install --cask raspberry-pi-imager`).
+2. Pick "Raspberry Pi 2".
+3. OS: "Other specific-purpose OS" -> "DietPi" -> the build for RPi 1/2/3/4
+   (ARMv7).
+4. Storage: the microSD.
+5. Do not apply OS customization in Imager -- we configure things via the
+   DietPi files themselves.
+6. Write and wait (5-10 min).
+
+After flashing, the boot partition (FAT32) mounts on macOS as
+`/Volumes/NO NAME/` (or `bootfs` depending on the version).
+
+## 2. Pre-boot configuration on the SD card
+
+Before the first boot, edit these files on the FAT32 partition:
 
 ### `dietpi-wifi.txt`
 
-Décommenter et renseigner :
+Uncomment and fill in:
 
 ```
-aWIFI_SSID[0]='ton_ssid'
-aWIFI_KEY[0]='ton_mot_de_passe'
+aWIFI_SSID[0]='your_ssid'
+aWIFI_KEY[0]='your_password'
 ```
 
 ### `dietpi.txt`
 
 ```ini
 AUTO_SETUP_NET_WIFI_ENABLED=1
-AUTO_SETUP_NET_WIFI_COUNTRY_CODE=FR     # ou ton code pays
-AUTO_SETUP_LOCALE=fr_FR.UTF-8
-AUTO_SETUP_KEYBOARD_LAYOUT=fr
+AUTO_SETUP_NET_WIFI_COUNTRY_CODE=FR     # or your country code
+AUTO_SETUP_LOCALE=en_US.UTF-8
+AUTO_SETUP_KEYBOARD_LAYOUT=us
 AUTO_SETUP_TIMEZONE=Europe/Paris
-AUTO_SETUP_NET_HOSTNAME=DietPi          # défaut, peut rester
-AUTO_SETUP_HEADLESS=1                   # important : pas d'écran
-AUTO_SETUP_AUTOMATED=1                  # install non-interactive
+AUTO_SETUP_NET_HOSTNAME=DietPi          # default, fine to keep
+AUTO_SETUP_HEADLESS=1                   # important: no display attached
+AUTO_SETUP_AUTOMATED=1                  # non-interactive install
 SURVEY_OPTED_IN=0
 ```
 
 ### `config.txt`
 
-Section caméra :
+Camera section:
 
 ```
 #-------RPi camera module-------
@@ -65,60 +88,65 @@ dtoverlay=imx708
 #disable_camera_led=1
 ```
 
-Section GPU memory (⚠️ critique, voir galère #4 plus bas) :
+GPU memory (critical, see gotcha #4 below):
 
 ```
 gpu_mem_1024=96
 ```
 
-Ne PAS toucher à `cmdline.txt` (voir galère #1).
+Do NOT touch `cmdline.txt` (see gotcha #1).
 
-Éjecter proprement la SD (Cmd-E sur Mac), insérer dans le RPi, brancher l'alim.
+Eject the SD cleanly (Cmd-E on macOS), insert it in the RPi, plug in power.
 
-## 3. Premier boot
+## 3. First boot
 
-Premier boot DietPi : 5 à 10 minutes (config initiale, install paquets, génération clés SSH, reboot autonome).
+DietPi first boot: 5 to 10 minutes (initial config, package install, SSH host
+keys, automatic reboot).
 
-Pour suivre la disponibilité depuis le Mac :
+To follow availability from your dev box:
 
 ```bash
 until ping -c 1 -W 1000 dietpi.local >/dev/null 2>&1; do sleep 5; done
 echo "RPi up"
 ```
 
-Si `dietpi.local` ne résout pas après quelques minutes, voir galère #6 (avahi pas installé par défaut) — il faut alors trouver l'IP via le routeur ou un scan ARP :
+If `dietpi.local` does not resolve after a few minutes, see gotcha #6 (avahi
+not installed by default) -- find the IP through your router or via an ARP
+scan:
 
 ```bash
-arp -a | grep "b8:27:eb"   # OUI Raspberry Pi Foundation
+arp -a | grep "b8:27:eb"   # Raspberry Pi Foundation OUI
 ```
 
-## 4. Setup automatique
+## 4. System setup
 
-Une fois SSH disponible, lancer le script depuis le Mac :
+Once SSH works, run the script from your dev box:
 
 ```bash
 ssh dietpi@dietpi.local 'bash -s' < _recovery/setup_rpi.sh
 ```
 
-Ce script (`_recovery/setup_rpi.sh`) fait dans l'ordre :
+`_recovery/setup_rpi.sh` does, in order:
 
-1. `apt update` + install des paquets (`rpicam-apps`, `python3-picamera2`, `avahi-daemon`, `libnss-mdns`, `rsync`, `curl`, `ca-certificates`).
-2. Activation `avahi-daemon` (mDNS).
-3. Suppression des blacklists DietPi `dietpi-disable_rpi_camera.conf` et `dietpi-disable_rpi_codec.conf` (galère #2).
-4. Réglage `gpu_mem_1024=96` si encore à `16` (galère #4).
-5. Ajout de l'utilisateur `dietpi` aux groupes `video` et `render`.
-6. Installation de `uv` via le script officiel Astral.
-7. Création des dossiers `~/wildwatch-src/`, `~/wildwatch/queue/`, `~/wildwatch/sent/`.
+1. `apt update` + install (`rpicam-apps`, `python3-picamera2`,
+   `avahi-daemon`, `libnss-mdns`, `rsync`, `curl`, `ca-certificates`).
+2. Enable `avahi-daemon` (mDNS).
+3. Remove the DietPi blacklists `dietpi-disable_rpi_camera.conf` and
+   `dietpi-disable_rpi_codec.conf` (gotcha #2).
+4. Bump `gpu_mem_1024` from `16` to `96` if needed (gotcha #4).
+5. Add the `dietpi` user to the `video` and `render` groups.
+6. Install `uv` via the official Astral script.
+7. Create `~/wildwatch-src/`, `~/wildwatch/queue/`, `~/wildwatch/sent/`.
 
-Si le script a touché `gpu_mem_1024`, rebooter manuellement après :
+If the script changed `gpu_mem_1024`, reboot manually afterwards:
 
 ```bash
-ssh dietpi@dietpi.local 'sudo /sbin/reboot'   # voir galère #5 (systemctl reboot)
+ssh dietpi@dietpi.local 'sudo /sbin/reboot'   # see gotcha #5 (systemctl reboot)
 ```
 
-## 5. Déploiement du code
+## 5. Code deployment
 
-Depuis la racine du repo :
+From the repo root:
 
 ```bash
 rsync -av --delete \
@@ -128,7 +156,8 @@ rsync -av --delete \
   ./ dietpi@dietpi.local:~/wildwatch-src/
 ```
 
-Création du venv côté RPi (⚠️ `--system-site-packages` impératif, voir galère #3) :
+Create the venv on the RPi (`--system-site-packages` is mandatory, see
+gotcha #3):
 
 ```bash
 ssh dietpi@dietpi.local '
@@ -138,7 +167,7 @@ ssh dietpi@dietpi.local '
 '
 ```
 
-Vérifier les imports :
+Smoke test the imports:
 
 ```bash
 ssh dietpi@dietpi.local '
@@ -152,38 +181,19 @@ print(\"OK\")
 '
 ```
 
-## 6. Configuration runtime
+## 6. Runtime configuration
 
-Créer `~/wildwatch/config.toml` sur le RPi (voir `capture/config.toml.example` à la racine du repo). Au minimum, mettre à jour `[upload].server_url` avec l'IP de ton serveur.
+Create `~/wildwatch/config.toml` on the RPi (see `capture/config.toml.example`
+in the repo). At minimum, update `[upload].server_url` with your server IP.
 
 ```toml
 [upload]
-server_url = "http://192.168.0.21:8000"  # IP du Mac/serveur
+server_url = "http://192.168.0.21:8000"  # dev box / server IP
 ```
 
-## Installation tout-en-un (recommandé)
+## 7. Run it
 
-Pour automatiser toutes les étapes ci-dessous (setup système, déploiement code,
-config runtime, service systemd, génération clé API), utilise l'installateur
-Python :
-
-```bash
-uv run _recovery/install_wildwatch.py
-```
-
-Le script découvre le RPi sur le réseau (mDNS → ARP → saisie manuelle), gère
-le scénario neuf vs réinstall, génère ou récupère la clé API, et pilote tout
-via SSH/rsync. Il est idempotent : tu peux le relancer à volonté.
-
-Pré-requis : `uv` et `rsync` sur ton PC, clé SSH déjà configurée pour
-`dietpi@<host>` (sinon le script t'indique la commande à lancer).
-
-Les sections 4 à 7 ci-dessous décrivent les étapes manuelles équivalentes,
-utiles pour debug ou si tu veux contrôler chaque étape.
-
-## 7. Lancement
-
-### Lancement manuel (pour test/dev)
+### Manual run (test/dev)
 
 ```bash
 ssh dietpi@dietpi.local '
@@ -192,73 +202,87 @@ ssh dietpi@dietpi.local '
 '
 ```
 
-### Lancement comme service systemd (production)
+### Run as a systemd service (production)
 
-Une fois la chaîne validée manuellement, on installe wildwatch-capture comme
-service qui démarre au boot et redémarre en cas de crash :
+Once the chain works manually, install wildwatch-capture as a service that
+starts at boot and restarts on failure:
 
 ```bash
 ssh dietpi@dietpi.local 'bash -s' < _recovery/install_systemd.sh
 ```
 
-Suivre les logs :
+Follow the logs:
 
 ```bash
 ssh dietpi@dietpi.local 'sudo journalctl -u wildwatch-capture -f'
 ```
 
-Arrêter / redémarrer :
+Stop / restart:
 
 ```bash
 ssh dietpi@dietpi.local 'sudo systemctl restart wildwatch-capture'
 ```
 
-Logs attendus :
+Expected logs:
 
 ```
-Config chargée depuis /home/dietpi/wildwatch/config.toml
-Serveur cible : http://192.168.0.21:8000
-Démarrage de la caméra
-Boucle de surveillance démarrée
+Config loaded from /home/dietpi/wildwatch/config.toml
+Target server: http://192.168.0.21:8000
+Starting camera
+Monitoring loop started
 ```
 
-Ensuite quand un mouvement est détecté :
+When motion is detected:
 
 ```
-Mouvement détecté (score=0.140), capture rafale
+Motion detected (score=0.140), capturing burst
 Queued /home/dietpi/wildwatch/queue/...
-Rafale terminée : 3 photo(s) enqueue(s)
+Burst done: 3 photo(s) enqueued
 Uploaded ... -> data/photos/...
-3 photo(s) envoyée(s) au serveur
+3 photo(s) uploaded to the server
 ```
 
 ---
 
-## Galères rencontrées et contournements
+## Gotchas and workarounds
 
-### Galère #1 — `cma=256M` dans `cmdline.txt` brick le boot
+### Gotcha #1 -- `cma=256M` in `cmdline.txt` bricks the boot
 
-**Symptôme** : après ajout de `cma=256M` à `/boot/firmware/cmdline.txt` et reboot, le RPi 2 v1.1 ne boote plus. LED rouge fixe seule, verte éteinte → kernel panic très précoce, AVANT tout userspace. Pas de récupération possible via SSH.
+**Symptom:** after adding `cma=256M` to `/boot/firmware/cmdline.txt` and
+rebooting, the RPi 2 v1.1 stops booting. Solid red LED, green LED off ->
+kernel panic before any userspace runs. No way to recover via SSH.
 
-**Cause** : `cma=256M` est trop élevé pour les structures mémoire du BCM2836 sur RPi 2 v1.1 et provoque un kernel panic au moment où le kernel essaie de réserver le pool CMA.
+**Cause:** `cma=256M` is too large for the BCM2836 memory layout on a RPi 2
+v1.1 and triggers a kernel panic when the kernel tries to reserve the CMA
+pool.
 
-**Récupération** : retrait physique de la SD, montage sur Mac, édition de `cmdline.txt` pour retirer le paramètre, ré-insertion. Mais comme on a aussi débranché à chaud le RPi en panique, le rootfs ext4 a été corrompu. Il a fallu reflasher complètement DietPi.
+**Recovery:** physically pull the SD, mount it on macOS, edit `cmdline.txt`
+to remove the parameter, re-insert. Because the RPi was hot-unplugged in the
+middle of a panic, the ext4 rootfs got corrupted as well -- we ended up
+reflashing DietPi from scratch.
 
-**Leçon** : ne JAMAIS toucher à `cmdline.txt` sur RPi 2 v1.1 sans plan de récupération facile (et même comme ça, c'est risqué).
+**Lesson:** NEVER touch `cmdline.txt` on the RPi 2 v1.1 without an easy
+recovery plan (and even then, it is risky).
 
-**Contournement pour le CMA** : on n'augmente plus le CMA. On adapte la résolution à ce qu'il permet (voir galère #7).
+**CMA workaround:** do not bump CMA. Adjust the resolution to fit the budget
+instead (see gotcha #7).
 
-### Galère #2 — DietPi blackliste les modules caméra par défaut
+### Gotcha #2 -- DietPi blacklists the camera modules by default
 
-**Symptôme** : `rpicam-hello --list-cameras` retourne `ERROR: rpicam-apps currently only supports the Raspberry Pi platforms.` alors que la machine est bien un RPi. `picamera2` lève `IndexError: list index out of range` car libcamera n'enregistre aucune caméra.
+**Symptom:** `rpicam-hello --list-cameras` returns
+`ERROR: rpicam-apps currently only supports the Raspberry Pi platforms.`
+even on a real RPi. `picamera2` raises `IndexError: list index out of range`
+because libcamera registers no camera at all.
 
-**Cause** : DietPi crée par défaut deux fichiers dans `/etc/modprobe.d/` qui blacklistent `bcm2835_isp` et `bcm2835_codec` :
+**Cause:** DietPi creates two files in `/etc/modprobe.d/` that blacklist
+`bcm2835_isp` and `bcm2835_codec`:
 - `/etc/modprobe.d/dietpi-disable_rpi_camera.conf`
 - `/etc/modprobe.d/dietpi-disable_rpi_codec.conf`
 
-Sans `bcm2835_isp`, le pipeline handler `rpi/vc4` de libcamera ne peut pas associer le sensor IMX708 à un device ISP, et abandonne sans erreur explicite.
+Without `bcm2835_isp`, the libcamera `rpi/vc4` pipeline handler cannot pair
+the IMX708 sensor with an ISP device and silently gives up.
 
-**Contournement** : supprimer les deux fichiers, reboot.
+**Workaround:** delete both files, reboot.
 
 ```bash
 sudo rm /etc/modprobe.d/dietpi-disable_rpi_camera.conf \
@@ -266,97 +290,126 @@ sudo rm /etc/modprobe.d/dietpi-disable_rpi_camera.conf \
 sudo /sbin/reboot
 ```
 
-C'est intégré dans `_recovery/setup_rpi.sh`.
+This is wired into `_recovery/setup_rpi.sh`.
 
-### Galère #3 — `picamera2` n'est pas pip-installable
+### Gotcha #3 -- `picamera2` is not pip-installable
 
-**Symptôme** : `uv sync` essaie de compiler `numpy` 2.4.4 from source pour armv7l (pas de wheel disponible) et échoue.
+**Symptom:** `uv sync` tries to compile `numpy` 2.4.4 from source for armv7l
+(no wheel available) and fails.
 
-**Cause** : `picamera2` est distribué uniquement via apt sur Debian (`python3-picamera2`). Il dépend de `numpy` (système) et de bindings C++ vers `libcamera` qui ne s'installent pas via pip.
+**Cause:** `picamera2` ships only via apt on Debian (`python3-picamera2`).
+It depends on `numpy` (system) and on C++ bindings to `libcamera` that do
+not install via pip.
 
-**Contournement** :
-- Installer `python3-picamera2` via apt — il tire `numpy` (2.2.4) du système.
-- Créer le venv uv avec `--system-site-packages` pour que le venv hérite de `numpy` et `picamera2` du système.
-- Ne PAS lister `numpy` dans `dependencies` côté `capture/pyproject.toml` (sinon uv tente de l'installer dans le venv, où il sera plus récent et masquera celui du système, ou échouera à compiler). Le mettre uniquement dans `dependency-groups.dev` pour les tests sur Mac.
+**Workaround:**
+- Install `python3-picamera2` via apt -- it pulls in system `numpy` (2.2.4).
+- Create the uv venv with `--system-site-packages` so the venv inherits
+  `numpy` and `picamera2` from the system.
+- Do NOT list `numpy` in `dependencies` of `capture/pyproject.toml`
+  (otherwise uv tries to install a newer one in the venv, which either
+  shadows the system version or fails to compile). Keep it only in
+  `dependency-groups.dev` for tests on the dev box.
 
-### Galère #4 — `gpu_mem_1024=16` empêche le firmware caméra
+### Gotcha #4 -- `gpu_mem_1024=16` disables the camera firmware
 
-**Symptôme** : modules kernel chargés, IMX708 détecté en dmesg, mais libcamera ne voit aucune caméra. `vcgencmd version` montre `(start_cd)`.
+**Symptom:** kernel modules load, IMX708 shows up in dmesg, but libcamera
+sees no camera. `vcgencmd version` shows `(start_cd)`.
 
-**Cause** : DietPi met `gpu_mem_1024=16` par défaut pour économiser RAM. Avec 16 Mo, le bootloader charge la variante `start_cd.elf` (cut-down) qui n'a pas le support caméra/ISP.
+**Cause:** DietPi defaults to `gpu_mem_1024=16` to save RAM. With 16 MB the
+bootloader loads `start_cd.elf` (cut-down), which has no camera/ISP support.
 
-**Contournement** : régler `gpu_mem_1024=96` dans `/boot/firmware/config.txt` puis reboot. Le firmware passe alors à `start.elf` (complet, caméra OK). Visible dans `vcgencmd version` qui passe de `(start_cd)` à `(start)`.
+**Workaround:** set `gpu_mem_1024=96` in `/boot/firmware/config.txt`, reboot.
+The firmware switches to `start.elf` (full, camera works). `vcgencmd version`
+flips from `(start_cd)` to `(start)`.
 
-### Galère #5 — `systemctl reboot` échoue avec « dbus-org.freedesktop.login1.service »
+### Gotcha #5 -- `systemctl reboot` fails with "dbus-org.freedesktop.login1.service"
 
-**Symptôme** :
+**Symptom:**
 ```
 Failed to set wall message, ignoring: Unit dbus-org.freedesktop.login1.service failed to load properly...
 Call to Reboot failed: Unit dbus-org.freedesktop.login1.service failed to load properly...
 ```
 
-**Cause** : un service systemd corrompu/incomplet sur DietPi minimaliste.
+**Cause:** broken/incomplete systemd service unit on minimal DietPi.
 
-**Contournement** : utiliser `/sbin/reboot` directement plutôt que `systemctl reboot`. Le reboot s'effectue malgré le message d'erreur dbus.
+**Workaround:** call `/sbin/reboot` directly instead of `systemctl reboot`.
+The reboot still happens despite the dbus error.
 
-### Galère #6 — `dietpi.local` ne résout pas
+### Gotcha #6 -- `dietpi.local` does not resolve
 
-**Symptôme** : juste après reflash, `ssh dietpi@dietpi.local` échoue avec « cannot resolve hostname ».
+**Symptom:** right after reflash, `ssh dietpi@dietpi.local` fails with
+"cannot resolve hostname".
 
-**Cause** : DietPi minimaliste n'installe pas `avahi-daemon` ni `libnss-mdns` par défaut, donc pas de mDNS.
+**Cause:** minimal DietPi does not install `avahi-daemon` or `libnss-mdns`,
+so there is no mDNS responder.
 
-**Contournement** : trouver l'IP du RPi via le routeur ou un scan ARP (`arp -a | grep "b8:27:eb"`), puis :
+**Workaround:** find the RPi IP via the router or with an ARP scan
+(`arp -a | grep "b8:27:eb"`), then:
 
 ```bash
 ssh dietpi@<ip> 'sudo apt-get install -y avahi-daemon libnss-mdns && sudo systemctl enable --now avahi-daemon'
 ```
 
-C'est intégré dans `_recovery/setup_rpi.sh`.
+This is wired into `_recovery/setup_rpi.sh`.
 
-### Galère #7 — V4L2 force 4 buffers minimum
+### Gotcha #7 -- V4L2 forces 4 buffers minimum
 
-**Symptôme** : capture haute résolution échoue avec :
+**Symptom:** high-resolution capture fails with:
 ```
 ERROR V4L2 v4l2_videodevice.cpp:1323 Unable to request 4 buffers: Cannot allocate memory
 ```
 
-Même avec `picamera2.create_still_configuration(buffer_count=1)`.
+Even with `picamera2.create_still_configuration(buffer_count=1)`.
 
-**Cause** : le driver V4L2 du RPi (`bcm2835_unicam_legacy`) impose un minimum de 4 buffers, indépendamment de ce que picamera2 demande. Avec 4608×2592 BGR888 = 36 Mo par buffer, ça donne 144 Mo > 64 Mo CMA disponibles.
+**Cause:** the RPi V4L2 driver (`bcm2835_unicam_legacy`) always allocates a
+minimum of 4 buffers regardless of what picamera2 asks. With 4608x2592
+BGR888 = 36 MB per buffer, we end up at 144 MB > 64 MB CMA available.
 
-**Contournement** : capturer en 2304×1296 (3 MP). 4 × 9 Mo = 36 Mo, tient large dans les 64 Mo CMA. C'est largement suffisant pour identifier des animaux et compatible avec SpeciesNet.
+**Workaround:** capture at 2304x1296 (3 MP). 4 x 9 MB = 36 MB, well within
+the 64 MB CMA budget. That resolution is plenty for animal identification
+and is compatible with SpeciesNet.
 
-### Galère #8 — `Path.replace()` échoue entre `/tmp` et `/home`
+### Gotcha #8 -- `Path.replace()` fails between `/tmp` and `/home`
 
-**Symptôme** : après capture, `OSError: [Errno 18] Invalid cross-device link`.
+**Symptom:** after capture, `OSError: [Errno 18] Invalid cross-device link`.
 
-**Cause** : DietPi monte `/tmp` en tmpfs (RAM), donc `/tmp` et `/home/dietpi` sont sur des devices différents. `os.rename(2)` (utilisé par `Path.replace()`) ne sait pas faire de rename cross-device.
+**Cause:** DietPi mounts `/tmp` on tmpfs (RAM), so `/tmp` and
+`/home/dietpi` live on different devices. `os.rename(2)` (used by
+`Path.replace()`) cannot rename across devices.
 
-**Contournement** : utiliser `shutil.move()` qui fait copy + delete dans ce cas. Voir `capture/src/wildwatch_capture/uploader.py`.
+**Workaround:** use `shutil.move()`, which falls back to copy + delete in
+that case. See `capture/src/wildwatch_capture/uploader.py`.
 
-### Galère #9 — Bug `rpicam-apps` v1.11.1 sur RPi 2 v1.1
+### Gotcha #9 -- `rpicam-apps` v1.11.1 bug on RPi 2 v1.1
 
-**Symptôme** : `rpicam-still` se termine en code 0 sans produire de fichier. `rpicam-still --version` segfaults au shutdown après avoir affiché la version.
+**Symptom:** `rpicam-still` exits 0 without producing a file.
+`rpicam-still --version` segfaults at exit after printing the version.
 
-**Cause** : bug spécifique à `rpicam-apps` v1.11.1 sur cette combinaison RPi 2 v1.1 + Camera Module 3 + kernel 6.12 + Debian Trixie.
+**Cause:** specific bug in `rpicam-apps` v1.11.1 on this combination of
+RPi 2 v1.1 + Camera Module 3 + kernel 6.12 + Debian Trixie.
 
-**Contournement** : ne pas utiliser les outils CLI `rpicam-*`. Utiliser `picamera2` (Python) directement, qui fonctionne parfaitement sur le même hardware. Notre code utilise déjà picamera2 exclusivement.
+**Workaround:** do not use the `rpicam-*` CLI tools. Use `picamera2`
+(Python) directly, which works perfectly on the same hardware. Our code
+already uses picamera2 exclusively.
 
-### Galère #10 — `scp` ne fonctionne pas sur DietPi
+### Gotcha #10 -- `scp` does not work on DietPi
 
-**Symptôme** : `scp file dietpi@dietpi.local:` échoue avec `bash: line 1: /usr/lib/sftp-server: No such file or directory`.
+**Symptom:** `scp file dietpi@dietpi.local:` fails with
+`bash: line 1: /usr/lib/sftp-server: No such file or directory`.
 
-**Cause** : DietPi minimaliste n'installe pas `openssh-sftp-server`.
+**Cause:** minimal DietPi does not install `openssh-sftp-server`.
 
-**Contournement** : utiliser `rsync` (installé par le setup script). `rsync` n'utilise pas sftp et passe par SSH directement.
+**Workaround:** use `rsync` (installed by the setup script). `rsync` does
+not need sftp and goes through plain SSH.
 
-### Galère #11 — Clé SSH du host change après reflash
+### Gotcha #11 -- SSH host key changes after a reflash
 
-**Symptôme** : `Host key verification failed` sur SSH après un reflash.
+**Symptom:** `Host key verification failed` on SSH after a reflash.
 
-**Cause** : la nouvelle install a généré de nouvelles clés SSH host, mais le Mac a encore l'ancienne dans `~/.ssh/known_hosts`.
+**Cause:** the new install generated new SSH host keys, but your dev box
+still has the old key in `~/.ssh/known_hosts`.
 
-**Contournement** :
+**Workaround:**
 
 ```bash
 ssh-keygen -R dietpi.local
@@ -365,47 +418,47 @@ ssh-keyscan -H dietpi.local >> ~/.ssh/known_hosts
 
 ---
 
-## Récapitulatif des fichiers critiques
+## Critical files cheat sheet
 
-| Fichier | Rôle |
-|---------|------|
-| `/boot/firmware/config.txt` | Config caméra + `gpu_mem_1024` |
-| `/boot/firmware/cmdline.txt` | NE PAS TOUCHER |
-| `/etc/modprobe.d/dietpi-disable_rpi_*.conf` | À supprimer |
-| `~/wildwatch/config.toml` | Config runtime wildwatch-capture |
-| `~/wildwatch-src/capture/.venv/` | venv uv avec system-site-packages |
+| Path                                          | Purpose                                  |
+|-----------------------------------------------|------------------------------------------|
+| `/boot/firmware/config.txt`                   | Camera config + `gpu_mem_1024`           |
+| `/boot/firmware/cmdline.txt`                  | DO NOT TOUCH                             |
+| `/etc/modprobe.d/dietpi-disable_rpi_*.conf`   | Delete                                   |
+| `~/wildwatch/config.toml`                     | wildwatch-capture runtime config         |
+| `~/wildwatch-src/capture/.venv/`              | uv venv with system-site-packages        |
 
-## Reproduction rapide après reflash
+## Quick reproduction after a reflash
 
-Une fois la fresh DietPi flashée et le WiFi configuré :
+Once a fresh DietPi is flashed with WiFi configured:
 
 ```bash
-# 1. Attendre que le RPi soit joignable
+# 1. Wait for the RPi to come up
 until ping -c 1 -W 1000 dietpi.local >/dev/null 2>&1; do sleep 5; done
 
-# 2. Setup auto (apt + groupes + uv + avahi + blacklists + gpu_mem)
+# 2. Auto setup (apt + groups + uv + avahi + blacklists + gpu_mem)
 ssh dietpi@dietpi.local 'bash -s' < _recovery/setup_rpi.sh
 
-# 3. Si gpu_mem a été modifié, reboot
+# 3. Reboot if gpu_mem was changed
 ssh dietpi@dietpi.local 'sudo /sbin/reboot'
 until ping -c 1 -W 1000 dietpi.local >/dev/null 2>&1; do sleep 5; done
 
-# 4. Sync code
+# 4. Sync the code
 rsync -av --delete \
   --exclude='.venv' --exclude='__pycache__' --exclude='*.pyc' \
   --exclude='.uv-cache' --exclude='.pytest_cache' --exclude='.ruff_cache' \
   --exclude='data/' --exclude='_recovery/' --exclude='.git/' \
   ./ dietpi@dietpi.local:~/wildwatch-src/
 
-# 5. Setup venv
+# 5. Set up the venv
 ssh dietpi@dietpi.local '
   cd ~/wildwatch-src/capture
   ~/.local/bin/uv venv --system-site-packages --python /usr/bin/python3
   ~/.local/bin/uv sync --no-dev --active
 '
 
-# 6. Créer ~/wildwatch/config.toml (manuel ou copier depuis capture/config.toml.example)
+# 6. Create ~/wildwatch/config.toml (manual, or copy from capture/config.toml.example)
 
-# 7. Lancer
+# 7. Run
 ssh dietpi@dietpi.local 'cd ~/wildwatch-src/capture && .venv/bin/wildwatch-capture'
 ```

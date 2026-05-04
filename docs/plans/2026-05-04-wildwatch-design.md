@@ -1,53 +1,54 @@
-# WildWatch — Design initial
+# WildWatch -- Initial design
 
-Date : 2026-05-04
+Date: 2026-05-04
 
-## Contexte
+## Context
 
-Piège photographique automatique pour animaux sauvages. Un Raspberry Pi équipé d'une caméra infrarouge capture des photos quand un mouvement est détecté, puis les envoie à un serveur web.
+Automated wildlife camera trap. A Raspberry Pi fitted with an infrared camera
+captures photos when motion is detected and uploads them to a web server.
 
-## Contraintes matérielles
+## Hardware constraints
 
-- RPi 2 v1.1 (pas de WiFi intégré, 1 Go RAM, quad-core 900MHz)
-- Camera Module 3 NoIR (12MP, autofocus, sans filtre IR)
+- RPi 2 v1.1 (no built-in WiFi, 1 GB RAM, quad-core 900 MHz)
+- Camera Module 3 NoIR (12 MP, autofocus, no IR cut filter)
 - DietPi OS
-- Dongle WiFi USB pour la connectivité
-- V1 sur secteur, batterie envisagée plus tard
-- Pas de capteur PIR pour la V1 (détection logicielle)
-- Pas d'illuminateur IR pour la V1 (lumière ambiante)
-- Accès SSH : `dietpi@dietpi.local`
+- USB WiFi dongle for connectivity
+- V1 runs on wall power; battery considered later
+- No PIR sensor for V1 (software detection)
+- No IR illuminator for V1 (ambient light only)
+- SSH access: `dietpi@dietpi.local`
 
-## Décisions techniques
+## Technical decisions
 
-| Décision | Choix | Raison |
-|----------|-------|--------|
-| Langage RPi | Python | picamera2 n'existe qu'en Python. Gain Rust négligeable car la conso vient de la caméra hardware |
-| Langage serveur | Python (FastAPI) | Stack homogène. SpeciesNet est en Python |
-| Gestion dépendances | uv | Rapide, moderne, standard Python |
-| Détection mouvement | Logicielle (comparaison de frames) | Pas de PIR disponible. Acceptable car V1 sur secteur |
-| Base de données | SQLite | Léger, pas de serveur DB à gérer. Migration PostgreSQL possible |
-| Frontend | Jinja2 + htmx | Léger, pas de build frontend, rendu serveur |
-| Déploiement serveur | Docker Compose + Caddy | HTTPS automatique, simple à maintenir |
-| Identification espèces | SpeciesNet (V2+) | Open source, 2000+ espèces, tourne en local |
+| Decision                  | Choice                       | Reason                                                                                  |
+|---------------------------|------------------------------|-----------------------------------------------------------------------------------------|
+| RPi language              | Python                       | picamera2 is Python-only. Rust would barely save power since the hardware dominates.    |
+| Server language           | Python (FastAPI)             | Single stack. SpeciesNet is Python-native.                                              |
+| Dependency management     | uv                           | Fast, modern, becoming the Python standard.                                             |
+| Motion detection          | Software (frame comparison)  | No PIR available; acceptable while V1 runs on wall power.                               |
+| Database                  | SQLite                       | Lightweight, no DB server to manage. PostgreSQL migration possible later.               |
+| Frontend                  | Jinja2 + htmx                | Lightweight, no JS build pipeline, server-rendered.                                     |
+| Server deployment         | Docker Compose + Caddy       | Automatic HTTPS, easy to maintain.                                                      |
+| Species identification    | SpeciesNet (V2+)             | Open source, 2000+ species, runs locally.                                               |
 
 ## Architecture
 
-Deux composants indépendants communiquant via HTTP unidirectionnel (RPi → serveur).
+Two independent components, communicating one-way over HTTP (RPi -> server).
 
 ### wildwatch-capture (RPi)
 
-- Boucle de surveillance avec picamera2
-- Preview basse résolution (640x480) pour la détection
-- Capture haute résolution (4608x2592) quand mouvement confirmé
-- Rafale de 3-5 photos par événement
-- File d'attente locale avec retry automatique
-- Configuration TOML
-- Service systemd
+- Monitoring loop using picamera2
+- Low-resolution preview (640x480) for detection
+- High-resolution capture (4608x2592) when motion is confirmed
+- Burst of 3-5 photos per event
+- Local queue with automatic retry
+- TOML configuration
+- systemd service
 
 ### wildwatch-server (VPS)
 
-- API REST FastAPI (upload, CRUD, stats)
-- Stockage fichiers par date
-- Thumbnails automatiques (150px, 400px, 800px)
-- Interface web galerie (Jinja2 + htmx)
-- Auth clé API (RPi) + login/mdp (web)
+- FastAPI REST API (upload, CRUD, stats)
+- File storage organized by date
+- Automatic thumbnails (150 px, 400 px, 800 px)
+- Web gallery (Jinja2 + htmx)
+- API key auth (RPi) + login/password (web)
