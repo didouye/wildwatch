@@ -17,12 +17,18 @@ log = logging.getLogger(__name__)
 
 
 class Uploader:
+    """Statuses HTTP considérés transitoires : on garde la photo en queue pour réessayer."""
+
+    TRANSIENT_STATUS = {408, 425, 429, 500, 502, 503, 504}
+
     def __init__(self, config: UploadConfig) -> None:
         self._cfg = config
         self.queue_dir = Path(config.queue_dir).expanduser()
         self.sent_dir = Path(config.sent_dir).expanduser()
+        self.dead_dir = self.queue_dir.parent / "dead"
         self.queue_dir.mkdir(parents=True, exist_ok=True)
         self.sent_dir.mkdir(parents=True, exist_ok=True)
+        self.dead_dir.mkdir(parents=True, exist_ok=True)
         self._last_flush_at = 0.0
 
     def enqueue(self, photo_path: Path, captured_at: datetime) -> Path:
@@ -54,9 +60,23 @@ class Uploader:
                 self._upload_one(photo)
                 self._move_to_sent(photo)
                 sent += 1
+            except httpx.HTTPStatusError as exc:
+                if exc.response.status_code in self.TRANSIENT_STATUS:
+                    log.warning(
+                        "Upload temporairement échoué (%s) pour %s, réessai plus tard",
+                        exc.response.status_code,
+                        photo.name,
+                    )
+                    break  # on garde l'ordre, on réessaiera
+                log.error(
+                    "Upload échoué de manière irrécupérable (%s) pour %s, déplacement en dead-letter",
+                    exc.response.status_code,
+                    photo.name,
+                )
+                self._move_to_dead(photo)
             except httpx.HTTPError as exc:
-                log.warning("Upload failed for %s: %s", photo.name, exc)
-                break  # on garde l'ordre, on réessaiera la prochaine
+                log.warning("Upload échoué (réseau) pour %s: %s", photo.name, exc)
+                break  # erreur réseau = transitoire, on garde l'ordre
         return sent
 
     def cleanup_old_sent(self, now: datetime | None = None) -> int:
@@ -97,8 +117,14 @@ class Uploader:
         log.info("Uploaded %s -> %s", photo.name, response.json().get("stored_path"))
 
     def _move_to_sent(self, photo: Path) -> None:
-        target = self.sent_dir / photo.name
-        shutil.move(str(photo), target)
+        self._move_with_meta(photo, self.sent_dir)
+
+    def _move_to_dead(self, photo: Path) -> None:
+        self._move_with_meta(photo, self.dead_dir)
+
+    @staticmethod
+    def _move_with_meta(photo: Path, target_dir: Path) -> None:
+        shutil.move(str(photo), target_dir / photo.name)
         meta = photo.with_suffix(photo.suffix + ".meta.json")
         if meta.exists():
-            shutil.move(str(meta), self.sent_dir / meta.name)
+            shutil.move(str(meta), target_dir / meta.name)

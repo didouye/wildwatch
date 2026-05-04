@@ -62,9 +62,13 @@ def _capture_burst(camera: Camera, uploader: Uploader, config: Config) -> int:
     return captured
 
 
+CLEANUP_INTERVAL_SECONDS = 3600.0  # une fois par heure
+
+
 def run(config: Config) -> None:
     detector = MotionDetector(config.motion)
     uploader = Uploader(config.upload)
+    last_cleanup_at = 0.0
 
     log.info("Démarrage de la caméra")
     with Camera(config.camera) as camera:
@@ -79,6 +83,13 @@ def run(config: Config) -> None:
             sent = uploader.flush()
             if sent:
                 log.info("%d photo(s) envoyée(s) au serveur", sent)
+
+            now_mono = time.monotonic()
+            if now_mono - last_cleanup_at > CLEANUP_INTERVAL_SECONDS:
+                deleted = uploader.cleanup_old_sent()
+                if deleted:
+                    log.info("Cleanup : %d photo(s) ancienne(s) supprimée(s) de sent/", deleted)
+                last_cleanup_at = now_mono
 
 
 def main() -> None:
