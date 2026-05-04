@@ -109,8 +109,10 @@ class Uploader:
     def _upload_one(self, photo: Path) -> None:
         meta_path = photo.with_suffix(photo.suffix + ".meta.json")
         captured_at = ""
+        metadata_str: str | None = None
         if meta_path.exists():
-            captured_at = json.loads(meta_path.read_text()).get("captured_at", "")
+            metadata_str = meta_path.read_text()
+            captured_at = json.loads(metadata_str).get("captured_at", "")
 
         url = f"{self._cfg.server_url.rstrip('/')}/api/photos"
         headers: dict[str, str] = {}
@@ -119,7 +121,9 @@ class Uploader:
 
         with photo.open("rb") as fp:
             files = {"file": (photo.name, fp, "image/jpeg")}
-            data = {"captured_at": captured_at}
+            data: dict[str, str] = {"captured_at": captured_at}
+            if metadata_str:
+                data["metadata"] = metadata_str
             response = httpx.post(
                 url,
                 files=files,
