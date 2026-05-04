@@ -27,6 +27,7 @@ class Camera:
         self._cfg = config
         self._picam: Picamera2 | None = None
         self._still_config: dict | None = None
+        self._last_capture_metadata: dict[str, object] = {}
 
     def start(self) -> None:
         from libcamera import Transform
@@ -78,10 +79,38 @@ class Camera:
         return yuv[:h, : self._cfg.detection_width]
 
     def capture_to_file(self, path: Path) -> None:
-        """Bascule en config still, capture en haute résolution, revient à la preview."""
+        """Bascule en config still, capture en haute résolution, revient à la preview.
+
+        Stocke les métadonnées picamera2 (exposure, gain, etc.) dans
+        `self.last_capture_metadata` pour enrichir le JSON côté upload.
+        """
         if self._picam is None or self._still_config is None:
             raise RuntimeError("Camera not started")
-        self._picam.switch_mode_and_capture_file(self._still_config, str(path))
+        request = self._picam.switch_mode_and_capture_request(self._still_config)
+        try:
+            request.save("main", str(path))
+            raw_meta = request.get_metadata() or {}
+        finally:
+            request.release()
+
+        camera_props = self._picam.camera_properties or {}
+        self._last_capture_metadata = {
+            "camera": {
+                "width": self._cfg.capture_width,
+                "height": self._cfg.capture_height,
+                "rotation": self._cfg.rotation,
+            },
+            "sensor": {
+                "model": camera_props.get("Model"),
+                "exposure_time_us": raw_meta.get("ExposureTime"),
+                "analogue_gain": raw_meta.get("AnalogueGain"),
+                "lux": raw_meta.get("Lux"),
+            },
+        }
+
+    @property
+    def last_capture_metadata(self) -> dict[str, object]:
+        return dict(self._last_capture_metadata)
 
     def __enter__(self) -> Camera:
         self.start()

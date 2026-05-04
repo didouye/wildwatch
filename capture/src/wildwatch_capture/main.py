@@ -20,6 +20,7 @@ import time
 from datetime import datetime, timezone
 from pathlib import Path
 
+from wildwatch_capture import system_info
 from wildwatch_capture.camera import Camera
 from wildwatch_capture.config import Config, load
 from wildwatch_capture.motion import MotionDetector
@@ -43,21 +44,31 @@ def _install_signal_handlers() -> None:
     signal.signal(signal.SIGTERM, handler)
 
 
-def _capture_burst(camera: Camera, uploader: Uploader, config: Config) -> int:
-    """Capture une rafale et l'enqueue. Retourne le nombre de photos."""
+def _capture_burst(
+    camera: Camera, uploader: Uploader, config: Config, motion_score: float
+) -> int:
+    """Capture une rafale et l'enqueue avec métadonnées enrichies."""
     captured = 0
-    for i in range(config.capture.burst_count):
+    burst_size = config.capture.burst_count
+    for i in range(burst_size):
         captured_at = datetime.now(timezone.utc)
         with tempfile.NamedTemporaryFile(prefix="wildwatch_", suffix=".jpg", delete=False) as tmp:
             tmp_path = Path(tmp.name)
         try:
             camera.capture_to_file(tmp_path)
-            uploader.enqueue(tmp_path, captured_at)
+            extra = {
+                "motion_score": round(motion_score, 4),
+                "frame_index": i + 1,
+                "burst_size": burst_size,
+                "system": system_info.snapshot(),
+                **camera.last_capture_metadata,
+            }
+            uploader.enqueue(tmp_path, captured_at, extra_metadata=extra)
             captured += 1
         except Exception as exc:
-            log.exception("Échec capture %d/%d: %s", i + 1, config.capture.burst_count, exc)
+            log.exception("Échec capture %d/%d: %s", i + 1, burst_size, exc)
             tmp_path.unlink(missing_ok=True)
-        if i < config.capture.burst_count - 1:
+        if i < burst_size - 1:
             time.sleep(config.capture.burst_interval_seconds)
     return captured
 
@@ -77,8 +88,9 @@ def run(config: Config) -> None:
             frame = camera.read_detection_frame()
             triggered = detector.process(frame, now=time.monotonic())
             if triggered:
-                log.info("Mouvement détecté (score=%.3f), capture rafale", detector.last_motion_score)
-                captured = _capture_burst(camera, uploader, config)
+                score = detector.last_motion_score
+                log.info("Mouvement détecté (score=%.3f), capture rafale", score)
+                captured = _capture_burst(camera, uploader, config, score)
                 log.info("Rafale terminée : %d photo(s) enqueue(s)", captured)
             sent = uploader.flush()
             if sent:

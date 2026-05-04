@@ -31,16 +31,30 @@ class Uploader:
         self.dead_dir.mkdir(parents=True, exist_ok=True)
         self._last_flush_at = 0.0
 
-    def enqueue(self, photo_path: Path, captured_at: datetime) -> Path:
-        """Déplace la photo dans la queue d'envoi et écrit ses métadonnées."""
+    def enqueue(
+        self,
+        photo_path: Path,
+        captured_at: datetime,
+        extra_metadata: dict[str, object] | None = None,
+    ) -> Path:
+        """Déplace la photo dans la queue d'envoi et écrit ses métadonnées.
+
+        `extra_metadata` est mergé dans le JSON et peut contenir : motion_score,
+        frame_index, burst_size, camera (résolution, format), sensor (model,
+        exposure_time, gain), system (cpu_temp, memory, hostname), etc.
+        """
         suffix = photo_path.suffix or ".jpg"
         stem = captured_at.strftime("%Y%m%dT%H%M%S%f")
         target = self.queue_dir / f"{stem}{suffix}"
         shutil.move(str(photo_path), target)
+        metadata: dict[str, object] = {
+            "captured_at": captured_at.isoformat(),
+            "filename": target.name,
+        }
+        if extra_metadata:
+            metadata.update(extra_metadata)
         meta_path = target.with_suffix(target.suffix + ".meta.json")
-        meta_path.write_text(
-            json.dumps({"captured_at": captured_at.isoformat(), "filename": target.name})
-        )
+        meta_path.write_text(json.dumps(metadata, sort_keys=True))
         log.info("Queued %s", target)
         return target
 
