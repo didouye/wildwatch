@@ -225,8 +225,12 @@ def local_ip_guess() -> str:
         return "127.0.0.1"
 
 
-def enroll_with_server(server_url: str, hostname: str) -> str:
-    """Call POST /api/cameras/enroll on the server, return the camera token.
+def enroll_with_server(server_url: str, hostname: str) -> tuple[str, str]:
+    """Call POST /api/cameras/enroll on the server. Returns (canonical_url, token).
+
+    Follows redirects (Caddy auto-308's http -> https) and reports the
+    post-redirect base URL so the caller can persist it in config.toml,
+    avoiding a redirect roundtrip on every subsequent upload.
 
     The camera lands in `pending` status. The operator must approve it
     from the /cameras page before uploads start.
@@ -234,15 +238,25 @@ def enroll_with_server(server_url: str, hostname: str) -> str:
     import httpx
 
     console.log(f"[bold]>[/bold] Enrolling camera with {server_url}...")
-    url = f"{server_url.rstrip('/')}/api/cameras/enroll"
-    res = httpx.post(url, json={"hostname": hostname}, timeout=30.0)
+    path = "/api/cameras/enroll"
+    res = httpx.post(
+        f"{server_url.rstrip('/')}{path}",
+        json={"hostname": hostname},
+        timeout=30.0,
+        follow_redirects=True,
+    )
     res.raise_for_status()
     body = res.json()
+    canonical = str(res.url).removesuffix(path).rstrip("/")
+    if canonical != server_url.rstrip("/"):
+        console.log(
+            f"[yellow]~[/yellow] Server redirected: {server_url} -> {canonical}"
+        )
     console.log(
         f"[green]ok[/green] enrolled as camera #{body['id']} "
         f"(status={body['status']})"
     )
-    return body["token"]
+    return canonical, body["token"]
 
 
 def decide_server(
@@ -256,8 +270,8 @@ def decide_server(
     3. Interactive prompt (legacy V0.5 path).
     """
     if server_arg:
-        token = enroll_with_server(server_arg, hostname=host)
-        return server_arg, token, False
+        canonical, token = enroll_with_server(server_arg, hostname=host)
+        return canonical, token, False
 
     if state.config_exists and state.server_url and state.api_key:
         console.log("[green]ok[/green] Reusing existing config")
@@ -270,8 +284,8 @@ def decide_server(
             "Server URL (e.g. http://192.168.1.10:8000):",
             validate=lambda v: v.startswith("http") or "Invalid URL",
         ).ask()
-        token = enroll_with_server(url, hostname=host)
-        return url, token, False
+        canonical, token = enroll_with_server(url, hostname=host)
+        return canonical, token, False
 
     # Local server setup
     api_key = secrets.token_urlsafe(32)
