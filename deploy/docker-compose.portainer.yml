@@ -1,0 +1,46 @@
+# Portainer-friendly variant of docker-compose.yml.
+#
+# Use this file when deploying via Portainer's stack UI. Portainer runs
+# `docker compose` inside its own container and cannot read env files
+# located on the host filesystem -- so we ask it to inject variables via
+# its built-in "Environment variables" panel and reference them with
+# `${...}` here.
+#
+# Setup steps in Portainer:
+#
+# 1. Stacks -> Add stack -> Web editor (paste this file).
+# 2. Scroll down to "Environment variables" and add:
+#       WILDWATCH_API_KEY            = openssl rand -hex 32
+#       WILDWATCH_WEB_USER           = admin
+#       WILDWATCH_WEB_PASSWORD_HASH  = paste the bcrypt hash verbatim
+#       WILDWATCH_SESSION_SECRET     = openssl rand -hex 32
+# 3. Deploy the stack.
+#
+# Portainer passes these as shell env vars to docker compose, so the `$`
+# in bcrypt hashes is not re-interpolated -- no escaping needed.
+#
+# Caddy is intentionally omitted: most Portainer setups already have a
+# reverse proxy in front (Traefik, Nginx Proxy Manager, etc.). Map the
+# container's port 8000 to a host port and point your existing proxy at
+# it. The example below binds to 127.0.0.1:18888 so only the local proxy
+# can reach the server.
+
+services:
+  server:
+    image: ghcr.io/didouye/wildwatch-server:latest
+    pull_policy: always
+    restart: unless-stopped
+    environment:
+      - WILDWATCH_API_KEY=${WILDWATCH_API_KEY}
+      - WILDWATCH_WEB_USER=${WILDWATCH_WEB_USER:-}
+      - WILDWATCH_WEB_PASSWORD_HASH=${WILDWATCH_WEB_PASSWORD_HASH:-}
+      - WILDWATCH_SESSION_SECRET=${WILDWATCH_SESSION_SECRET:-}
+      - WILDWATCH_PHOTOS_DIR=/data/photos
+      - WILDWATCH_DB_URL=sqlite:////data/wildwatch.db
+    volumes:
+      - wildwatch_data:/data
+    ports:
+      - "127.0.0.1:18888:8000"
+
+volumes:
+  wildwatch_data:

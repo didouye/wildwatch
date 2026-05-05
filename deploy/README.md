@@ -3,6 +3,13 @@
 This directory contains everything needed to run the WildWatch server in
 production behind Caddy with automatic HTTPS, on a Linux VPS with Docker.
 
+> **Deploying via Portainer instead?** Use
+> [`docker-compose.portainer.yml`](docker-compose.portainer.yml) and inject
+> the secrets through Portainer's "Environment variables" UI. Portainer's
+> built-in compose runner cannot read host-mounted env files, so the
+> Caddy + `wildwatch.env` setup below does not apply -- bring your own
+> reverse proxy (Traefik, Nginx Proxy Manager, ...) for HTTPS.
+
 You only need three files on the host: `docker-compose.yml`, `Caddyfile`,
 and `.env`. The image is pulled from GHCR -- no local build, no checkout
 of the repo on the server.
