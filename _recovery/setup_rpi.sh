@@ -17,6 +17,7 @@ sudo apt-get install -y --no-install-recommends \
   ca-certificates \
   curl \
   rsync \
+  git \
   avahi-daemon \
   libnss-mdns
 
