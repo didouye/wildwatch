@@ -1,11 +1,12 @@
 # syntax=docker/dockerfile:1.7
 # ----- Stage 1: builder ---------------------------------------------------
+# We use the same WORKDIR in both stages so the venv shebangs (which embed
+# absolute paths to the venv's python) keep working after the COPY.
 FROM python:3.13-slim AS builder
 
-# uv 0.11+ provides reproducible installs from uv.lock
 RUN pip install --no-cache-dir 'uv>=0.11'
 
-WORKDIR /build
+WORKDIR /app
 COPY pyproject.toml uv.lock ./
 COPY src/ ./src/
 RUN uv sync --frozen --no-dev
@@ -23,8 +24,8 @@ RUN useradd --create-home --uid ${APP_UID} ${APP_USER} \
 
 WORKDIR /app
 
-# Copy the prebuilt venv and the source tree.
-COPY --from=builder --chown=${APP_USER}:${APP_USER} /build/.venv /app/.venv
+# Same path as the builder stage so the venv binaries resolve correctly.
+COPY --from=builder --chown=${APP_USER}:${APP_USER} /app/.venv /app/.venv
 COPY --chown=${APP_USER}:${APP_USER} src/ /app/src/
 
 # Photos and DB live under /data (mounted as a volume).

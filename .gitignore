@@ -43,6 +43,7 @@ logs/
 # Environment / secrets
 .env
 .env.local
+.env.test
 *.secret
 
 # Runtime data (do not commit photos or databases)
