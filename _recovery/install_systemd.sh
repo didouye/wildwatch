@@ -22,8 +22,12 @@ echo "=== Install unit file ==="
 sudo cp "$UNIT_SRC" "$UNIT_DEST"
 sudo systemctl daemon-reload
 
-echo "=== Enable + start ==="
-sudo systemctl enable --now wildwatch-capture.service
+echo "=== Enable + (re)start ==="
+# `enable --now` is a no-op when the service is already running, which would
+# leave a re-install with stale config in memory. Always restart to pick up
+# any config.toml or unit-file changes.
+sudo systemctl enable wildwatch-capture.service
+sudo systemctl restart wildwatch-capture.service
 
 echo "=== Status ==="
 sleep 2
