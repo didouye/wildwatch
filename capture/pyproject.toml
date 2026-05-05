@@ -24,6 +24,10 @@ dev = [
     # apt package python3-picamera2 → we get it via --system-site-packages.
     # On a dev box (Mac/Linux for tests), uv installs it explicitly.
     "numpy>=1.24",
+    # Pillow is used by state_publisher.py (preview JPEG encode). On the RPi
+    # it ships via python3-picamera2 (--system-site-packages); dev box needs
+    # it explicitly for tests.
+    "pillow>=10",
     "pytest>=8",
     "ruff>=0.6",
 ]
