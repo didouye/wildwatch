@@ -148,3 +148,12 @@ def test_heartbeat_stores_preview_to_disk(client: TestClient, tmp_path: Path) ->
     from wildwatch_server.storage import previews_dir
     p = previews_dir() / f"{cam['id']}.jpg"
     assert p.exists() and p.read_bytes() == fake_jpeg
+
+
+def test_heartbeat_without_preview_does_not_create_file(client: TestClient, tmp_path: Path) -> None:
+    cam = _enroll(client)
+    _approve(client, cam["id"])
+    res = _heartbeat(client, cam["token"], {"agent": {"version": "1.2.0"}})
+    assert res.status_code == 200
+    from wildwatch_server.storage import previews_dir
+    assert not (previews_dir() / f"{cam['id']}.jpg").exists()

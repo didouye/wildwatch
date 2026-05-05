@@ -11,6 +11,7 @@ from sqlmodel import Session, select
 from wildwatch_server.db import get_session
 from wildwatch_server.models import Camera
 from wildwatch_server.rate_limit import HEARTBEAT_LIMIT, limiter
+from wildwatch_server.storage import previews_dir
 
 router = APIRouter(prefix="/api/cameras/agent")
 
@@ -49,9 +50,10 @@ async def heartbeat(
     session.commit()
 
     if preview is not None:
-        from wildwatch_server.storage import previews_dir
         contents = await preview.read()
         if contents:
             target = previews_dir() / f"{cam.id}.jpg"
-            target.write_bytes(contents)
+            tmp = target.with_suffix(".jpg.tmp")
+            tmp.write_bytes(contents)
+            tmp.replace(target)
     return {"desired_config": None, "commands": []}
