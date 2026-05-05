@@ -43,6 +43,9 @@ console = Console()
 REPO_ROOT = Path(__file__).resolve().parent.parent
 SETUP_RPI_SCRIPT = REPO_ROOT / "_recovery" / "setup_rpi.sh"
 INSTALL_SYSTEMD_SCRIPT = REPO_ROOT / "_recovery" / "install_systemd.sh"
+TMPFILES_CONF = REPO_ROOT / "_recovery" / "wildwatch-tmpfiles.conf"
+SUDOERS_FILE = REPO_ROOT / "_recovery" / "wildwatch-sudoers"
+AGENT_UNIT_FILE = REPO_ROOT / "agent" / "systemd" / "wildwatch-agent.service"
 API_KEY_FILE = REPO_ROOT / "_recovery" / "api_key.secret"
 
 # Raspberry Pi Foundation OUIs (MAC prefixes).
@@ -376,7 +379,7 @@ def rsync_code(host: str) -> None:
 
 
 def setup_venv(host: str) -> None:
-    console.log("[bold]>[/bold] Creating/updating the venv (uv sync)...")
+    console.log("[bold]>[/bold] Creating/updating the capture venv (uv sync)...")
     cmd = (
         "cd ~/wildwatch-src/capture && "
         "if [ ! -d .venv ]; then "
@@ -387,9 +390,30 @@ def setup_venv(host: str) -> None:
     )
     res = ssh_run(host, cmd, capture=True)
     if res.returncode != 0:
-        console.print(f"[red]x uv sync failed:[/red]\n{res.stdout}\n{res.stderr}")
+        console.print(f"[red]x capture uv sync failed:[/red]\n{res.stdout}\n{res.stderr}")
         sys.exit(1)
-    console.log("[green]ok[/green] venv ready")
+    console.log("[green]ok[/green] capture venv ready")
+
+
+def setup_agent_venv(host: str) -> None:
+    """Build the agent venv in ~/wildwatch-src/agent/.
+
+    Symmetric to setup_venv() but for the agent package. The agent does not
+    need system-site-packages (no picamera2 dep).
+    """
+    console.log("[bold]>[/bold] Creating/updating the agent venv (uv sync)...")
+    cmd = (
+        "cd ~/wildwatch-src/agent && "
+        "if [ ! -d .venv ]; then "
+        "  ~/.local/bin/uv venv --python /usr/bin/python3 >/dev/null 2>&1; "
+        "fi && "
+        "~/.local/bin/uv sync --no-dev --active 2>&1 | tail -3"
+    )
+    res = ssh_run(host, cmd, capture=True)
+    if res.returncode != 0:
+        console.print(f"[red]x agent uv sync failed:[/red]\n{res.stdout}\n{res.stderr}")
+        sys.exit(1)
+    console.log("[green]ok[/green] agent venv ready")
 
 
 CONFIG_TEMPLATE = """\
@@ -435,6 +459,36 @@ def write_config(host: str, server_url: str, api_key: str) -> None:
     console.log("[green]ok[/green] config.toml written")
 
 
+def install_tmpfiles_and_sudoers(host: str) -> None:
+    """Install /etc/tmpfiles.d/wildwatch.conf and /etc/sudoers.d/wildwatch.
+
+    These must exist BEFORE the capture service starts so /run/wildwatch is
+    present when wildwatch-capture writes status.json there. The sudoers entry
+    is consumed by the agent (PR2 will use it to restart capture).
+    """
+    console.log(
+        "[bold]>[/bold] Installing /etc/tmpfiles.d/wildwatch.conf + "
+        "/etc/sudoers.d/wildwatch..."
+    )
+    cmd = (
+        "set -e && "
+        "sudo cp ~/wildwatch-src/_recovery/wildwatch-tmpfiles.conf "
+        "/etc/tmpfiles.d/wildwatch.conf && "
+        "sudo systemd-tmpfiles --create /etc/tmpfiles.d/wildwatch.conf && "
+        "sudo install -m 0440 -o root -g root "
+        "~/wildwatch-src/_recovery/wildwatch-sudoers /etc/sudoers.d/wildwatch && "
+        "sudo visudo -c -q"
+    )
+    res = ssh_run(host, cmd, capture=True)
+    if res.returncode != 0:
+        console.print(
+            f"[red]x tmpfiles/sudoers install failed:[/red]\n"
+            f"{res.stdout}\n{res.stderr}"
+        )
+        sys.exit(1)
+    console.log("[green]ok[/green] tmpfiles + sudoers installed")
+
+
 def install_systemd(host: str) -> None:
     console.log("[bold]>[/bold] Running install_systemd.sh on the RPi...")
     with INSTALL_SYSTEMD_SCRIPT.open() as fp:
@@ -442,24 +496,66 @@ def install_systemd(host: str) -> None:
     if res.returncode != 0:
         console.print("[red]x install_systemd.sh failed[/red]")
         sys.exit(1)
-    console.log("[green]ok[/green] systemd service installed")
+    console.log("[green]ok[/green] capture systemd service installed")
+
+
+def install_agent_systemd(host: str) -> None:
+    """Install + enable + start the wildwatch-agent.service unit.
+
+    Symmetric to install_systemd() (which handles wildwatch-capture). Copies
+    the unit file from the synced source tree, daemon-reloads, enables and
+    restarts the agent.
+    """
+    console.log("[bold]>[/bold] Installing the wildwatch-agent systemd service...")
+    cmd = (
+        "set -e && "
+        "sudo cp ~/wildwatch-src/agent/systemd/wildwatch-agent.service "
+        "/etc/systemd/system/wildwatch-agent.service && "
+        "sudo systemctl daemon-reload && "
+        "sudo systemctl enable wildwatch-agent.service && "
+        "sudo systemctl restart wildwatch-agent.service"
+    )
+    res = ssh_run(host, cmd, capture=True)
+    if res.returncode != 0:
+        console.print(
+            f"[red]x install_agent_systemd failed:[/red]\n{res.stdout}\n{res.stderr}"
+        )
+        sys.exit(1)
+    console.log("[green]ok[/green] agent systemd service installed")
 
 
 def restart_and_verify(host: str) -> None:
-    console.log("[bold]>[/bold] Restarting the service and checking status...")
+    console.log("[bold]>[/bold] Restarting capture and checking status...")
     ssh_run(host, "sudo systemctl restart wildwatch-capture", capture=True)
     import time
 
     time.sleep(3)
     res = ssh_run(host, "systemctl is-active wildwatch-capture", capture=True)
     if "active" not in res.stdout:
-        console.print(f"[red]x service inactive after restart: {res.stdout.strip()}[/red]")
+        console.print(f"[red]x capture inactive after restart: {res.stdout.strip()}[/red]")
         logs = ssh_run(
             host, "sudo journalctl -u wildwatch-capture --no-pager -n 20", capture=True
         )
         console.print(logs.stdout)
         sys.exit(1)
-    console.log("[green]ok[/green] service active")
+    console.log("[green]ok[/green] capture service active")
+
+
+def verify_agent(host: str) -> None:
+    """Check that wildwatch-agent.service is active after install."""
+    console.log("[bold]>[/bold] Checking agent status...")
+    import time
+
+    time.sleep(2)
+    res = ssh_run(host, "systemctl is-active wildwatch-agent", capture=True)
+    if "active" not in res.stdout:
+        console.print(f"[red]x agent inactive after restart: {res.stdout.strip()}[/red]")
+        logs = ssh_run(
+            host, "sudo journalctl -u wildwatch-agent --no-pager -n 20", capture=True
+        )
+        console.print(logs.stdout)
+        sys.exit(1)
+    console.log("[green]ok[/green] agent service active")
 
 
 # ---------------------------------------------------------------------------
@@ -481,10 +577,19 @@ def main() -> None:
     )
     args = parser.parse_args()
 
-    if not SETUP_RPI_SCRIPT.exists() or not INSTALL_SYSTEMD_SCRIPT.exists():
+    required_files = [
+        SETUP_RPI_SCRIPT,
+        INSTALL_SYSTEMD_SCRIPT,
+        TMPFILES_CONF,
+        SUDOERS_FILE,
+        AGENT_UNIT_FILE,
+    ]
+    missing = [p for p in required_files if not p.exists()]
+    if missing:
+        rels = ", ".join(str(p.relative_to(REPO_ROOT)) for p in missing)
         console.print(
-            "[red]x Run this script from the repo root "
-            "(sub-scripts missing in _recovery/).[/red]"
+            f"[red]x Run this script from the repo root "
+            f"(missing files: {rels}).[/red]"
         )
         sys.exit(1)
     if shutil.which("rsync") is None:
@@ -520,12 +625,18 @@ def main() -> None:
     rsync_code(host)
     setup_venv(host)
     write_config(host, server_url, api_key)
+    install_tmpfiles_and_sudoers(host)
     install_systemd(host)
+    setup_agent_venv(host)
+    install_agent_systemd(host)
     restart_and_verify(host)
+    verify_agent(host)
 
     # Final summary
     summary = Text()
-    summary.append("ok wildwatch-capture is active on ", style="bold green")
+    summary.append(
+        "ok wildwatch-capture + wildwatch-agent are active on ", style="bold green"
+    )
     summary.append(host, style="bold")
     summary.append("\n\n")
     if args.server:
@@ -536,8 +647,10 @@ def main() -> None:
         )
     summary.append("Live logs:\n", style="bold")
     summary.append(f"  ssh {SSH_USER}@{host} 'sudo journalctl -u wildwatch-capture -f'\n")
-    summary.append("\nRestart the service:\n", style="bold")
+    summary.append(f"  ssh {SSH_USER}@{host} 'sudo journalctl -u wildwatch-agent -f'\n")
+    summary.append("\nRestart the services:\n", style="bold")
     summary.append(f"  ssh {SSH_USER}@{host} 'sudo systemctl restart wildwatch-capture'\n")
+    summary.append(f"  ssh {SSH_USER}@{host} 'sudo systemctl restart wildwatch-agent'\n")
     if server_local:
         summary.append("\nStart the server on this machine:\n", style="bold yellow")
         summary.append(f"  WILDWATCH_API_KEY={api_key} \\\n")

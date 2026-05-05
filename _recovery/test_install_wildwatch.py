@@ -86,5 +86,81 @@ def test_repo_root_layout() -> None:
     assert INSTALL.INSTALL_SYSTEMD_SCRIPT.exists()
 
 
+def test_agent_assets_exist() -> None:
+    """V1.2 PR1: the installer also deploys the agent package and unit file."""
+    # Constants point at the right files.
+    assert INSTALL.AGENT_UNIT_FILE.name == "wildwatch-agent.service"
+    assert INSTALL.TMPFILES_CONF.name == "wildwatch-tmpfiles.conf"
+    assert INSTALL.SUDOERS_FILE.name == "wildwatch-sudoers"
+    # And the files exist on disk.
+    assert INSTALL.AGENT_UNIT_FILE.exists()
+    assert INSTALL.TMPFILES_CONF.exists()
+    assert INSTALL.SUDOERS_FILE.exists()
+
+
+def test_agent_deploy_helpers_exist() -> None:
+    """V1.2 PR1: the new agent-deploy phases must be exposed as functions."""
+    # These functions are wired into main() to mirror the capture flow.
+    assert callable(getattr(INSTALL, "setup_agent_venv", None))
+    assert callable(getattr(INSTALL, "install_agent_systemd", None))
+    assert callable(getattr(INSTALL, "install_tmpfiles_and_sudoers", None))
+    assert callable(getattr(INSTALL, "verify_agent", None))
+
+
+def test_agent_venv_command_uses_agent_dir() -> None:
+    """The agent venv builder must cd into ~/wildwatch-src/agent (not capture)."""
+    captured: dict[str, str] = {}
+
+    def fake_ssh_run(_host: str, command: str, *, capture: bool = False):
+        captured["command"] = command
+        return type("R", (), {"returncode": 0, "stdout": "", "stderr": ""})()
+
+    with patch.object(INSTALL, "ssh_run", side_effect=fake_ssh_run):
+        INSTALL.setup_agent_venv("dietpi.local")
+
+    cmd = captured["command"]
+    assert "~/wildwatch-src/agent" in cmd
+    assert "uv sync" in cmd
+    # The agent venv must NOT use --system-site-packages (no picamera2 dep).
+    assert "--system-site-packages" not in cmd
+
+
+def test_install_agent_systemd_uses_unit_file() -> None:
+    """install_agent_systemd must copy the unit file, daemon-reload, enable + start."""
+    captured: dict[str, str] = {}
+
+    def fake_ssh_run(_host: str, command: str, *, capture: bool = False):
+        captured["command"] = command
+        return type("R", (), {"returncode": 0, "stdout": "", "stderr": ""})()
+
+    with patch.object(INSTALL, "ssh_run", side_effect=fake_ssh_run):
+        INSTALL.install_agent_systemd("dietpi.local")
+
+    cmd = captured["command"]
+    assert "agent/systemd/wildwatch-agent.service" in cmd
+    assert "/etc/systemd/system/wildwatch-agent.service" in cmd
+    assert "systemctl daemon-reload" in cmd
+    assert "systemctl enable wildwatch-agent.service" in cmd
+    assert "systemctl restart wildwatch-agent.service" in cmd
+
+
+def test_install_tmpfiles_and_sudoers_command() -> None:
+    """tmpfiles + sudoers install must touch both /etc/tmpfiles.d and /etc/sudoers.d."""
+    captured: dict[str, str] = {}
+
+    def fake_ssh_run(_host: str, command: str, *, capture: bool = False):
+        captured["command"] = command
+        return type("R", (), {"returncode": 0, "stdout": "", "stderr": ""})()
+
+    with patch.object(INSTALL, "ssh_run", side_effect=fake_ssh_run):
+        INSTALL.install_tmpfiles_and_sudoers("dietpi.local")
+
+    cmd = captured["command"]
+    assert "/etc/tmpfiles.d/wildwatch.conf" in cmd
+    assert "/etc/sudoers.d/wildwatch" in cmd
+    assert "systemd-tmpfiles --create" in cmd
+    assert "visudo -c" in cmd
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main([__file__, "-v"]))
