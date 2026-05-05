@@ -1,0 +1,2 @@
+# WildWatch agent privileges (V1.2 PR2 will use the restart command)
+dietpi ALL=(root) NOPASSWD: /bin/systemctl restart wildwatch-capture, /bin/systemctl is-active wildwatch-capture

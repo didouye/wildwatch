@@ -1,0 +1,31 @@
+[Unit]
+Description=WildWatch RPi agent (heartbeat + config sync)
+Documentation=https://github.com/didouye/wildwatch
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=dietpi
+Group=dietpi
+
+WorkingDirectory=/home/dietpi/wildwatch-src/agent
+ExecStart=/home/dietpi/wildwatch-src/agent/.venv/bin/wildwatch-agent --log-level INFO
+
+Restart=always
+RestartSec=5
+StartLimitIntervalSec=300
+StartLimitBurst=10
+
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=wildwatch-agent
+
+NoNewPrivileges=false
+ProtectSystem=strict
+ProtectHome=read-only
+ReadWritePaths=/home/dietpi/wildwatch /run/wildwatch
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target

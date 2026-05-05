@@ -13,7 +13,10 @@
 #   3. Clones the repo into ~/wildwatch-src/ and creates the uv venv.
 #   4. Calls the server's POST /api/cameras/enroll to obtain a camera token.
 #   5. Writes ~/wildwatch/config.toml with that token + the server URL.
-#   6. Installs and starts the wildwatch-capture systemd service.
+#   6. Installs the tmpfiles.d entry (creates /run/wildwatch) and the
+#      sudoers entry for the agent (PR2 will use it to restart capture).
+#   7. Installs and starts the wildwatch-capture systemd service.
+#   8. Builds the agent venv and starts the wildwatch-agent service.
 #
 # After the script finishes, the RPi shows up as "Pending approval" on the
 # server's /cameras page. Approve it and uploads start within seconds.
@@ -57,7 +60,7 @@ echo "    Repo  : $REPO_URL"
 echo
 
 # ---------- Step 1: system setup ----------
-echo "==> Step 1/6: system packages + uv + groups"
+echo "==> Step 1/8: system packages + uv + groups"
 curl -fsSL "$RAW_BASE/_recovery/setup_rpi.sh" | bash
 
 # ---------- Step 2: reboot if gpu_mem was bumped ----------
@@ -92,7 +95,7 @@ UNIT
 fi
 
 # ---------- Step 3: clone repo + venv ----------
-echo "==> Step 3/6: clone wildwatch repo + uv venv"
+echo "==> Step 3/8: clone wildwatch repo + uv venv"
 SRC_DIR="$HOME/wildwatch-src"
 if [[ -d "$SRC_DIR/.git" ]]; then
     git -C "$SRC_DIR" pull --ff-only
@@ -112,7 +115,7 @@ fi
 "$HOME/.local/bin/uv" sync --no-dev --active
 
 # ---------- Step 4: enroll with the server ----------
-echo "==> Step 4/6: enrolling this camera with the server"
+echo "==> Step 4/8: enrolling this camera with the server"
 HOSTNAME_TAG="$(hostname)"
 
 # Resolve redirects (e.g. Caddy http -> https) so we end up storing the
@@ -145,7 +148,7 @@ CAMERA_ID="$(echo "$ENROLL_RESPONSE" | python3 -c 'import json, sys; print(json.
 echo "    enrolled as camera #$CAMERA_ID (status=pending)"
 
 # ---------- Step 5: runtime config ----------
-echo "==> Step 5/6: writing ~/wildwatch/config.toml"
+echo "==> Step 5/8: writing ~/wildwatch/config.toml"
 mkdir -p "$HOME/wildwatch"
 cat >"$HOME/wildwatch/config.toml" <<TOML
 [camera]
@@ -177,13 +180,36 @@ request_timeout_seconds = 60.0
 TOML
 chmod 600 "$HOME/wildwatch/config.toml"
 
-# ---------- Step 6: systemd service ----------
-echo "==> Step 6/6: installing the systemd service"
+# ---------- Step 6: tmpfiles.d + sudoers ----------
+# Install these BEFORE the capture service starts so /run/wildwatch exists
+# the first time wildwatch-capture comes up (it writes status.json there).
+echo "==> Step 6/8: installing /etc/tmpfiles.d/wildwatch.conf + /etc/sudoers.d/wildwatch"
+sudo cp "$SRC_DIR/_recovery/wildwatch-tmpfiles.conf" /etc/tmpfiles.d/wildwatch.conf
+sudo systemd-tmpfiles --create /etc/tmpfiles.d/wildwatch.conf
+sudo install -m 0440 -o root -g root \
+    "$SRC_DIR/_recovery/wildwatch-sudoers" /etc/sudoers.d/wildwatch
+sudo visudo -c -q  # validate
+
+# ---------- Step 7: capture systemd service ----------
+echo "==> Step 7/8: installing the wildwatch-capture systemd service"
 bash "$SRC_DIR/_recovery/install_systemd.sh"
+
+# ---------- Step 8: agent venv + systemd service ----------
+echo "==> Step 8/8: building agent venv + installing wildwatch-agent.service"
+cd "$SRC_DIR/agent"
+if [[ ! -d .venv ]]; then
+    "$HOME/.local/bin/uv" venv --python /usr/bin/python3 >/dev/null
+fi
+"$HOME/.local/bin/uv" sync --no-dev --active
+
+sudo cp "$SRC_DIR/agent/systemd/wildwatch-agent.service" /etc/systemd/system/
+sudo systemctl daemon-reload
+sudo systemctl enable wildwatch-agent.service
+sudo systemctl restart wildwatch-agent.service
 
 cat <<DONE
 
-==> WildWatch capture is running.
+==> WildWatch capture + agent are running.
 
     The camera is enrolled but PENDING. Approve it at:
       $SERVER_URL/cameras
@@ -192,5 +218,7 @@ cat <<DONE
 
     Useful commands:
       sudo journalctl -u wildwatch-capture -f
+      sudo journalctl -u wildwatch-agent -f
       sudo systemctl restart wildwatch-capture
+      sudo systemctl restart wildwatch-agent
 DONE
