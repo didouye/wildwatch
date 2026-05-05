@@ -48,3 +48,13 @@ def test_loop_once_throttles_preview(tmp_path: Path) -> None:
     # status written each iteration, but preview only once (throttled).
     assert publisher.write_status.call_count == 3
     assert publisher.write_preview.call_count == 1
+
+
+def test_loop_once_continues_when_write_status_fails(tmp_path: Path) -> None:
+    config = Config()
+    camera, detector, uploader, publisher = _make_mocks(tmp_path)
+    publisher.write_status.side_effect = OSError("disk full")
+    state = main_module.LoopState()
+    # Should not raise; should increment error_count.
+    main_module._loop_once(camera, detector, uploader, publisher, state, config)
+    assert state.error_count == 1

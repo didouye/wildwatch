@@ -139,7 +139,11 @@ def _loop_once(
         log.info("%d photo(s) uploaded to the server", sent)
 
     # State publishing — always status, preview throttled.
-    publisher.write_status(_build_status(state, config))
+    try:
+        publisher.write_status(_build_status(state, config))
+    except Exception:
+        log.exception("Failed to write status")
+        state.error_count += 1
     now_mono = time.monotonic()
     if now_mono - state.last_preview_at_mono > PREVIEW_INTERVAL_S:
         try:
@@ -147,6 +151,7 @@ def _loop_once(
             state.last_preview_at_mono = now_mono
         except Exception:
             log.exception("Failed to write preview")
+            state.error_count += 1
 
     # Cleanup unchanged.
     if now_mono - state.last_cleanup_at > CLEANUP_INTERVAL_SECONDS:
