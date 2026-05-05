@@ -7,7 +7,16 @@ from datetime import date, datetime, timezone
 from pathlib import Path
 from typing import Literal
 
-from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile
+from fastapi import (
+    APIRouter,
+    BackgroundTasks,
+    Depends,
+    File,
+    Form,
+    HTTPException,
+    Query,
+    UploadFile,
+)
 from fastapi.responses import FileResponse
 from sqlalchemy import func
 from sqlmodel import Session, select
@@ -20,6 +29,7 @@ from wildwatch_server.models import (
     PhotoRead,
 )
 from wildwatch_server.storage import photos_dir
+from wildwatch_server.thumbnails import generate_all
 
 router = APIRouter(prefix="/api/photos", dependencies=[Depends(require_api_key)])
 
@@ -56,6 +66,7 @@ def _photo_from_metadata(
 
 @router.post("")
 async def upload_photo(
+    background_tasks: BackgroundTasks,
     file: UploadFile = File(...),
     captured_at: str | None = Form(default=None),
     metadata: str | None = Form(default=None),
@@ -104,6 +115,10 @@ async def upload_photo(
     session.add(photo)
     session.commit()
     session.refresh(photo)
+
+    # Generate thumbnails asynchronously so the client does not wait for
+    # Pillow. The /thumb endpoint regenerates lazily if anything is missing.
+    background_tasks.add_task(generate_all, relative)
 
     return {
         "id": photo.id,

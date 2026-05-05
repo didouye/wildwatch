@@ -93,11 +93,23 @@ value to `gpu_mem_1024=96` to load the full `start.elf`.
 
 ## V0.4b -- Web UI and thumbnails
 
-- [ ] Automatic thumbnail generation (150 px, 400 px, 800 px) on upload
-- [ ] Web UI: paginated gallery
-- [ ] Web UI: photo detail with metadata
-- [ ] Web UI: date filters
-- [ ] Web auth (username/password)
+- [x] Pillow thumbnail module: 3 sizes (150 / 400 / 800 px), EXIF-aware,
+      idempotent, JPEG q=80
+- [x] Async generation via FastAPI BackgroundTasks at upload time
+- [x] Lazy fallback: GET /thumb/{size}/{id} regenerates synchronously when
+      the cache file is missing
+- [x] `POST /api/admin/regen_thumbnails` to rebuild missing thumbnails after
+      a reindex
+- [x] Server-rendered web UI (Jinja2 + htmx + Tailwind via CDN)
+- [x] Routes: `/`, `/gallery`, `/photos/{id}`, `/photos/{id}/download`,
+      `/thumb/{size}/{id}`
+- [x] Gallery with paginated grid (24 photos/page) + htmx partial response
+      for filter/pagination updates without a full page reload
+- [x] Date range and hostname filters
+- [x] Photo detail page with full metadata + prev/next navigation
+- [x] 40 server tests green (17 API + 8 thumbnail + 15 UI/admin)
+
+Web auth (login/password) and HTTPS termination are deferred to V1.0.
 
 ## V0.5 -- Sharing and management
 

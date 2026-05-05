@@ -1,0 +1,45 @@
+{% extends "base.html" %}
+
+{% block title %}WildWatch -- Gallery{% endblock %}
+
+{% block content %}
+<section class="space-y-4">
+  <div class="flex items-baseline justify-between">
+    <h1 class="text-2xl font-semibold">Gallery</h1>
+    <p class="text-sm text-slate-400">{{ total }} photo{{ '' if total == 1 else 's' }}</p>
+  </div>
+
+  <form
+    class="flex flex-wrap items-end gap-3 rounded-lg bg-slate-800 p-4 border border-slate-700"
+    hx-get="/gallery"
+    hx-target="#gallery-grid-wrapper"
+    hx-select="#gallery-grid-wrapper"
+    hx-swap="outerHTML"
+    hx-push-url="true"
+  >
+    <label class="flex flex-col text-sm">
+      <span class="text-slate-300 mb-1">From</span>
+      <input type="date" name="from" value="{{ filters.from_ or '' }}" class="rounded bg-slate-900 border border-slate-700 px-2 py-1 text-slate-100">
+    </label>
+    <label class="flex flex-col text-sm">
+      <span class="text-slate-300 mb-1">To</span>
+      <input type="date" name="to" value="{{ filters.to or '' }}" class="rounded bg-slate-900 border border-slate-700 px-2 py-1 text-slate-100">
+    </label>
+    <label class="flex flex-col text-sm">
+      <span class="text-slate-300 mb-1">Hostname</span>
+      <select name="hostname" class="rounded bg-slate-900 border border-slate-700 px-2 py-1 text-slate-100">
+        <option value="">Any</option>
+        {% for host in hostnames %}
+          <option value="{{ host }}" {% if filters.hostname == host %}selected{% endif %}>{{ host }}</option>
+        {% endfor %}
+      </select>
+    </label>
+    <button type="submit" class="rounded bg-emerald-600 hover:bg-emerald-500 px-3 py-1.5 text-sm font-medium">Apply</button>
+    <a href="/gallery" class="text-sm text-slate-400 hover:text-slate-200">Reset</a>
+  </form>
+
+  <div id="gallery-grid-wrapper">
+    {% include "_gallery_grid.html" %}
+  </div>
+</section>
+{% endblock %}

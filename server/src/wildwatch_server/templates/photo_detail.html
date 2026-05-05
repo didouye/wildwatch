@@ -1,0 +1,108 @@
+{% extends "base.html" %}
+
+{% block title %}WildWatch -- Photo {{ photo.id }}{% endblock %}
+
+{% block content %}
+<section class="space-y-6">
+  <div class="flex items-baseline justify-between">
+    <h1 class="text-2xl font-semibold">Photo #{{ photo.id }}</h1>
+    <a href="/gallery" class="text-sm text-slate-400 hover:text-slate-200">&larr; Back to gallery</a>
+  </div>
+
+  <div class="grid gap-6 lg:grid-cols-[2fr_1fr]">
+    <div class="rounded-lg overflow-hidden bg-slate-800 border border-slate-700">
+      <img src="/thumb/800/{{ photo.id }}" alt="Photo {{ photo.id }}" class="w-full h-auto">
+    </div>
+
+    <aside class="space-y-4">
+      <a href="/photos/{{ photo.id }}/download"
+         class="inline-block rounded bg-emerald-600 hover:bg-emerald-500 px-4 py-2 font-medium">
+        Download original
+      </a>
+
+      <div class="rounded-lg bg-slate-800 border border-slate-700 p-4 text-sm">
+        <h2 class="font-semibold mb-3 text-slate-200">Metadata</h2>
+        <dl class="grid grid-cols-2 gap-y-1 gap-x-3 text-slate-300">
+          <dt class="text-slate-400">Captured at</dt>
+          <dd>{{ photo.captured_at.strftime('%Y-%m-%d %H:%M:%S') }} UTC</dd>
+
+          <dt class="text-slate-400">Received at</dt>
+          <dd>{{ photo.received_at.strftime('%Y-%m-%d %H:%M:%S') }} UTC</dd>
+
+          <dt class="text-slate-400">Hostname</dt>
+          <dd>{{ photo.hostname or '-' }}</dd>
+
+          {% if photo.motion_score is not none %}
+            <dt class="text-slate-400">Motion score</dt>
+            <dd>{{ '%.3f'|format(photo.motion_score) }}</dd>
+          {% endif %}
+
+          {% if photo.frame_index is not none and photo.burst_size is not none %}
+            <dt class="text-slate-400">Burst</dt>
+            <dd>{{ photo.frame_index }} / {{ photo.burst_size }}</dd>
+          {% endif %}
+
+          {% if photo.camera_width %}
+            <dt class="text-slate-400">Resolution</dt>
+            <dd>{{ photo.camera_width }} &times; {{ photo.camera_height }}</dd>
+          {% endif %}
+
+          {% if photo.sensor_model %}
+            <dt class="text-slate-400">Sensor</dt>
+            <dd>{{ photo.sensor_model }}</dd>
+          {% endif %}
+
+          {% if photo.exposure_time_us is not none %}
+            <dt class="text-slate-400">Exposure</dt>
+            <dd>{{ photo.exposure_time_us }} us</dd>
+          {% endif %}
+
+          {% if photo.analogue_gain is not none %}
+            <dt class="text-slate-400">Gain</dt>
+            <dd>{{ '%.2f'|format(photo.analogue_gain) }}</dd>
+          {% endif %}
+
+          {% if photo.lux is not none %}
+            <dt class="text-slate-400">Lux</dt>
+            <dd>{{ '%.1f'|format(photo.lux) }}</dd>
+          {% endif %}
+
+          {% if photo.cpu_temp is not none %}
+            <dt class="text-slate-400">CPU temp</dt>
+            <dd>{{ '%.1f'|format(photo.cpu_temp) }} &deg;C</dd>
+          {% endif %}
+
+          {% if photo.memory_avail_mb is not none %}
+            <dt class="text-slate-400">Memory free</dt>
+            <dd>{{ '%.0f'|format(photo.memory_avail_mb) }} MB</dd>
+          {% endif %}
+
+          {% if photo.load_avg_1min is not none %}
+            <dt class="text-slate-400">Load (1 min)</dt>
+            <dd>{{ '%.2f'|format(photo.load_avg_1min) }}</dd>
+          {% endif %}
+
+          <dt class="text-slate-400">File size</dt>
+          <dd>{{ (photo.file_size / 1024) | round | int }} KB</dd>
+
+          <dt class="text-slate-400">Path</dt>
+          <dd class="break-all text-xs text-slate-400">{{ photo.file_path }}</dd>
+        </dl>
+      </div>
+
+      <nav class="flex items-center justify-between text-sm">
+        {% if prev_id %}
+          <a href="/photos/{{ prev_id }}" class="rounded bg-slate-800 hover:bg-slate-700 px-3 py-1.5 border border-slate-700">&larr; Previous</a>
+        {% else %}
+          <span class="text-slate-500">&larr; Previous</span>
+        {% endif %}
+        {% if next_id %}
+          <a href="/photos/{{ next_id }}" class="rounded bg-slate-800 hover:bg-slate-700 px-3 py-1.5 border border-slate-700">Next &rarr;</a>
+        {% else %}
+          <span class="text-slate-500">Next &rarr;</span>
+        {% endif %}
+      </nav>
+    </aside>
+  </div>
+</section>
+{% endblock %}
