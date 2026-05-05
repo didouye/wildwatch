@@ -12,9 +12,15 @@ enough that the hash alone is hard to crack offline, but do not commit it.
 from __future__ import annotations
 
 import getpass
+import logging
 import sys
 
-from wildwatch_server.auth_web import hash_password
+# Silence passlib's noisy fallback log lines about the bcrypt 4.x API change
+# (it tries the legacy `bcrypt.__about__` attribute first, fails, and falls
+# back to `bcrypt.__version__`). Must run before importing passlib.
+logging.getLogger("passlib").setLevel(logging.ERROR)
+
+from wildwatch_server.auth_web import hash_password  # noqa: E402
 
 
 def main() -> None:
