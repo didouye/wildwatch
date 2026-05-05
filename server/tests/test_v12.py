@@ -12,6 +12,7 @@ from sqlalchemy import text
 from sqlmodel import SQLModel
 
 from wildwatch_server import db as db_module
+from wildwatch_server.models import Camera
 
 
 def _reload_app(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
@@ -104,3 +105,34 @@ def test_heartbeat_returns_403_when_pending(client: TestClient) -> None:
     cam = _enroll(client)
     res = _heartbeat(client, cam["token"], {"agent": {"version": "1.2.0"}})
     assert res.status_code == 403
+
+
+def test_heartbeat_stores_blob_and_timestamp(client: TestClient) -> None:
+    cam = _enroll(client)
+    _approve(client, cam["id"])
+    payload = {
+        "agent": {"version": "1.2.0", "uptime_s": 42},
+        "system": {"cpu_temp_c": 45.0, "memory_avail_mb": 200, "memory_total_mb": 512,
+                    "load_avg_1min": 0.3, "disk_avail_mb": 1024, "queue_size": 0},
+        "capture": {"service_active": True, "status_age_s": 1, "preview_age_s": 2,
+                     "last_capture_at": None, "last_detection_at": None,
+                     "error_count": 0, "apply_error_observed": False},
+        "reported_config": {"rotation": 0, "capture_width": 2304},
+    }
+    res = _heartbeat(client, cam["token"], payload)
+    assert res.status_code == 200, res.text
+
+    # Sanity: the admin list endpoint still works after the heartbeat write.
+    assert client.get(
+        "/api/cameras",
+        headers={"Authorization": "Bearer admin-key"},
+    ).status_code == 200
+    # Re-fetch via direct DB session for the new fields (they aren't in CameraRead yet).
+    from wildwatch_server.db import get_engine
+    from sqlmodel import Session as SM
+    with SM(get_engine()) as s:
+        row = s.get(Camera, cam["id"])
+        assert row.agent_last_seen_at is not None
+        stored = json.loads(row.last_heartbeat)
+        assert stored["agent"]["version"] == "1.2.0"
+        assert stored["reported_config"]["rotation"] == 0

@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+import json
+from datetime import datetime, timezone
+
 from fastapi import APIRouter, Depends, File, Form, Header, HTTPException, Request, Response, UploadFile
 from sqlmodel import Session, select
 
@@ -34,5 +37,14 @@ def heartbeat(
     authorization: str | None = Header(default=None),
     session: Session = Depends(get_session),
 ) -> dict:
-    _camera_from_authz(session, authorization)
+    cam = _camera_from_authz(session, authorization)
+    try:
+        parsed = json.loads(status)
+    except json.JSONDecodeError as exc:
+        raise HTTPException(status_code=400, detail="status must be valid JSON") from exc
+
+    cam.last_heartbeat = json.dumps(parsed, separators=(",", ":"))
+    cam.agent_last_seen_at = datetime.now(timezone.utc)
+    session.add(cam)
+    session.commit()
     return {"desired_config": None, "commands": []}
