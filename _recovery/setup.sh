@@ -94,10 +94,15 @@ fi
 # ---------- Step 3: clone repo + venv ----------
 echo "==> Step 3/6: clone wildwatch repo + uv venv"
 SRC_DIR="$HOME/wildwatch-src"
-if [[ ! -d "$SRC_DIR/.git" ]]; then
-    git clone --depth 1 "$REPO_URL" "$SRC_DIR"
-else
+if [[ -d "$SRC_DIR/.git" ]]; then
     git -C "$SRC_DIR" pull --ff-only
+else
+    # Dir may exist without a .git/ (created by setup_rpi.sh's mkdir -p, or
+    # left over from a prior failed install). git clone refuses a non-empty
+    # destination, so wipe it -- wildwatch-src holds code + venv only, no
+    # user data (which lives in ~/wildwatch/).
+    rm -rf "$SRC_DIR"
+    git clone --depth 1 "$REPO_URL" "$SRC_DIR"
 fi
 
 cd "$SRC_DIR/capture"
