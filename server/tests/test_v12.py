@@ -174,3 +174,40 @@ def test_get_preview_returns_jpeg(client: TestClient) -> None:
 def test_get_preview_returns_404_when_missing(client: TestClient) -> None:
     res = client.get("/preview/9999")
     assert res.status_code == 404
+
+
+def test_camera_card_renders_status(client: TestClient) -> None:
+    cam = _enroll(client)
+    _approve(client, cam["id"])
+    payload = {
+        "agent": {"version": "1.2.0", "uptime_s": 60},
+        "system": {"cpu_temp_c": 47.3, "memory_avail_mb": 234, "memory_total_mb": 512,
+                    "load_avg_1min": 0.5, "disk_avail_mb": 1024, "queue_size": 0},
+        "capture": {"service_active": True, "status_age_s": 1, "preview_age_s": 2,
+                     "last_capture_at": None, "last_detection_at": None,
+                     "error_count": 0, "apply_error_observed": False},
+        "reported_config": {"rotation": 0, "capture_width": 2304, "capture_height": 1296},
+    }
+    _heartbeat(client, cam["token"], payload)
+
+    res = client.get(f"/cameras/{cam['id']}/card")
+    assert res.status_code == 200
+    body = res.text
+    # The fragment carries the running config + agent badge.
+    assert "47.3" in body
+    assert "Agent" in body
+    assert "Capture" in body
+    assert "rotation" in body and "0" in body  # current value
+
+
+def test_heartbeat_rejects_non_dict_status(client: TestClient) -> None:
+    cam = _enroll(client)
+    _approve(client, cam["id"])
+    # Send a list instead of a dict.
+    files = {"status": (None, json.dumps([1, 2, 3]))}
+    res = client.post(
+        "/api/cameras/agent/heartbeat",
+        headers={"Authorization": f"Bearer {cam['token']}"},
+        files=files,
+    )
+    assert res.status_code == 400

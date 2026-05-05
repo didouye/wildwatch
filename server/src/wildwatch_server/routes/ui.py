@@ -354,6 +354,49 @@ def _camera_with_count(session: Session, cam: Camera) -> dict:
     return {"cam": cam, "photo_count": count}
 
 
+def _camera_card_context(cam: Camera) -> dict:
+    """Compute fields the card template needs (parses last_heartbeat)."""
+    import json
+    from datetime import datetime, timezone
+
+    hb = json.loads(cam.last_heartbeat) if cam.last_heartbeat else {}
+    now = datetime.now(timezone.utc)
+    agent_seen = cam.agent_last_seen_at
+    if agent_seen is not None and agent_seen.tzinfo is None:
+        agent_seen = agent_seen.replace(tzinfo=timezone.utc)
+    agent_age_s = (now - agent_seen).total_seconds() if agent_seen else None
+    agent_online = agent_age_s is not None and agent_age_s < 60
+
+    capture_block = hb.get("capture") or {}
+    capture_online = (
+        agent_online
+        and bool(capture_block.get("service_active"))
+        and (capture_block.get("status_age_s") or 999) < 30
+    )
+
+    return {
+        "cam": cam,
+        "hb": hb,
+        "agent_online": agent_online,
+        "agent_age_s": agent_age_s,
+        "capture_online": capture_online,
+    }
+
+
+@router.get("/cameras/{camera_id}/card", response_class=HTMLResponse)
+def camera_card(
+    camera_id: int, request: Request, session: Session = Depends(get_session)
+) -> HTMLResponse:
+    cam = session.get(Camera, camera_id)
+    if cam is None:
+        raise HTTPException(status_code=404)
+    return templates.TemplateResponse(
+        request=request,
+        name="_camera_card.html",
+        context=_camera_card_context(cam),
+    )
+
+
 @router.get("/cameras", response_class=HTMLResponse)
 def cameras_page(
     request: Request, session: Session = Depends(get_session)

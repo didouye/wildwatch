@@ -43,6 +43,8 @@ async def heartbeat(
         parsed = json.loads(status)
     except json.JSONDecodeError as exc:
         raise HTTPException(status_code=400, detail="status must be valid JSON") from exc
+    if not isinstance(parsed, dict):
+        raise HTTPException(status_code=400, detail="status must be a JSON object")
 
     cam.last_heartbeat = json.dumps(parsed, separators=(",", ":"))
     cam.agent_last_seen_at = datetime.now(timezone.utc)

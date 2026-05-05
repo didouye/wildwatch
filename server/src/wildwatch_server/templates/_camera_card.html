@@ -1,0 +1,59 @@
+<li
+  id="camera-card-{{ cam.id }}"
+  class="rounded-lg bg-slate-800 border border-slate-700 p-3 space-y-2"
+  hx-get="/cameras/{{ cam.id }}/card"
+  hx-trigger="every 5s"
+  hx-swap="outerHTML"
+>
+  <div class="flex items-baseline justify-between gap-3">
+    <p class="font-medium">{{ cam.display_name or cam.hostname }}</p>
+    <div class="flex gap-2 text-xs">
+      <span class="px-2 py-0.5 rounded {% if agent_online %}bg-emerald-700{% else %}bg-rose-700{% endif %}">
+        Agent {{ "online" if agent_online else "offline" }}
+      </span>
+      <span class="px-2 py-0.5 rounded {% if capture_online %}bg-emerald-700{% elif agent_online %}bg-amber-700{% else %}bg-rose-700{% endif %}">
+        Capture {{ "online" if capture_online else "offline" }}
+      </span>
+    </div>
+  </div>
+
+  <div class="flex gap-3">
+    <img
+      src="/preview/{{ cam.id }}{% if cam.agent_last_seen_at %}?v={{ cam.agent_last_seen_at.timestamp()|int }}{% endif %}"
+      alt="Preview"
+      class="w-40 h-30 object-cover rounded bg-slate-900 border border-slate-700"
+      onerror="this.style.opacity=0.3;this.alt='no preview yet';"
+    >
+    <div class="text-xs text-slate-300 space-y-0.5 grow">
+      {% if hb.system %}
+        <div>CPU {{ hb.system.cpu_temp_c }}&deg;C &middot;
+             RAM {{ hb.system.memory_avail_mb }}/{{ hb.system.memory_total_mb }}MB &middot;
+             Disk {{ (hb.system.disk_avail_mb / 1024)|round(1) }}GB free</div>
+        <div>Queue {{ hb.system.queue_size }} &middot;
+             Errors {{ hb.capture.error_count }} &middot;
+             {% if hb.capture.last_capture_at %}Last capture {{ hb.capture.last_capture_at }}{% else %}No capture yet{% endif %}</div>
+      {% else %}
+        <div class="italic text-slate-500">Waiting for first heartbeat...</div>
+      {% endif %}
+      {% if hb.agent %}
+        <div class="text-slate-500">Agent v{{ hb.agent.version }} &middot; uptime {{ hb.agent.uptime_s }}s</div>
+      {% endif %}
+    </div>
+  </div>
+
+  {% if hb.reported_config %}
+    <p class="text-xs text-slate-400">
+      Config (running):
+      rotation={{ hb.reported_config.rotation }} &middot;
+      capture={{ hb.reported_config.capture_width }}&times;{{ hb.reported_config.capture_height }} &middot;
+      motion thr={{ hb.reported_config.area_threshold }}
+    </p>
+  {% endif %}
+
+  <div class="flex gap-3 text-xs">
+    <a href="/gallery?camera_id={{ cam.id }}" class="text-emerald-300 hover:text-emerald-200">See photos &rarr;</a>
+    <form method="post" action="/cameras/{{ cam.id }}/revoke" onsubmit="return confirm('Revoke this camera?');">
+      <button class="text-rose-400 hover:text-rose-300">Revoke</button>
+    </form>
+  </div>
+</li>
