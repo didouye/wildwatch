@@ -66,6 +66,7 @@ wildwatch/
 |  |- static/
 |- docs/
 |  |- SETUP-RPI.md                # Full install guide + gotchas/workarounds
+|  |- SETUP-OPERATOR.md           # Tools required on the operator's machine
 |  |- plans/
 |- _recovery/
 |  |- install_wildwatch.py        # Python orchestrator (uv run)

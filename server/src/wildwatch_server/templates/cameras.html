@@ -145,6 +145,13 @@
     <p class="text-sm text-slate-400">
       Both methods enroll the RPi automatically. After it shows up in the
       <em>Pending approval</em> list above, click Approve and uploads start.
+      The "from your computer" path needs a few tools locally --
+      <a
+        href="https://github.com/didouye/wildwatch/blob/main/docs/SETUP-OPERATOR.md"
+        target="_blank"
+        rel="noopener"
+        class="underline text-sky-400 hover:text-sky-300"
+      >see requirements</a>.
     </p>
 
     <div class="space-y-3">
@@ -157,7 +164,7 @@
             over SSH, runs the system setup, and calls the enrollment
             endpoint:
           </p>
-          {% set cmd_local = "git clone --depth 1 https://github.com/didouye/wildwatch /tmp/wildwatch-installer && cd /tmp/wildwatch-installer && uv run _recovery/install_wildwatch.py --server " ~ server_url %}
+          {% set cmd_local = 'bash -c "$(curl -fsSL https://raw.githubusercontent.com/didouye/wildwatch/main/_recovery/install.sh)" -- --server ' ~ server_url %}
           <div class="relative">
             <pre id="cmd-local" class="rounded bg-slate-950 border border-slate-700 p-2 pr-16 text-xs overflow-x-auto"><code>{{ cmd_local }}</code></pre>
             <button
