@@ -345,13 +345,12 @@ def bulk_action(
 # ---------- Cameras admin page ----------
 
 
-def _camera_with_count(session: Session, cam: Camera) -> dict:
-    count = int(
+def _photo_count(session: Session, cam: Camera) -> int:
+    return int(
         session.exec(
             select(func.count()).select_from(Photo).where(Photo.camera_id == cam.id)
         ).one()
     )
-    return {"cam": cam, "photo_count": count}
 
 
 def _camera_card_context(cam: Camera) -> dict:
@@ -402,10 +401,21 @@ def cameras_page(
     request: Request, session: Session = Depends(get_session)
 ) -> HTMLResponse:
     rows = session.exec(select(Camera).order_by(Camera.enrolled_at.desc())).all()
-    cams = [_camera_with_count(session, c) for c in rows]
-    pending = [c for c in cams if c["cam"].status == "pending"]
-    approved = [c for c in cams if c["cam"].status == "approved"]
-    revoked = [c for c in cams if c["cam"].status == "revoked"]
+    pending = [
+        {"cam": c, "photo_count": _photo_count(session, c)}
+        for c in rows
+        if c.status == "pending"
+    ]
+    revoked = [
+        {"cam": c, "photo_count": _photo_count(session, c)}
+        for c in rows
+        if c.status == "revoked"
+    ]
+    approved = [
+        _camera_card_context(c) | {"photo_count": _photo_count(session, c)}
+        for c in rows
+        if c.status == "approved"
+    ]
     server_url = str(request.base_url).rstrip("/")
     return templates.TemplateResponse(
         request=request,
@@ -414,7 +424,7 @@ def cameras_page(
             "pending": pending,
             "approved": approved,
             "revoked": revoked,
-            "total": len(cams),
+            "total": len(rows),
             "server_url": server_url,
         },
     )

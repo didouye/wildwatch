@@ -200,6 +200,15 @@ def test_camera_card_renders_status(client: TestClient) -> None:
     assert "rotation" in body and "0" in body  # current value
 
 
+def test_cameras_page_uses_card_fragment(client: TestClient) -> None:
+    cam = _enroll(client)
+    _approve(client, cam["id"])
+    res = client.get("/cameras")
+    assert res.status_code == 200
+    # The polling URL must be present (sanity that the new fragment was rendered).
+    assert f'hx-get="/cameras/{cam["id"]}/card"' in res.text
+
+
 def test_heartbeat_rejects_non_dict_status(client: TestClient) -> None:
     cam = _enroll(client)
     _approve(client, cam["id"])

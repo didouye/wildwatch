@@ -56,41 +56,11 @@
     </h2>
     {% if approved %}
       <ul class="space-y-2">
-        {% for row in approved %}
-          {% set cam = row.cam %}
-          <li class="rounded-lg bg-slate-800 border border-slate-700 p-3 space-y-2">
-            <div class="flex items-baseline justify-between gap-3">
-              <form method="post" action="/cameras/{{ cam.id }}/rename" class="flex items-center gap-2 grow">
-                <input
-                  type="text"
-                  name="display_name"
-                  value="{{ cam.display_name or '' }}"
-                  placeholder="{{ cam.hostname }}"
-                  class="bg-transparent border-b border-slate-700 hover:border-emerald-500 focus:border-emerald-500 outline-none px-1 py-0.5 text-base font-medium text-slate-100 grow"
-                >
-                <button class="text-xs text-slate-400 hover:text-slate-200">Save</button>
-              </form>
-              <a
-                href="/gallery?camera_id={{ cam.id }}"
-                class="text-xs text-emerald-300 hover:text-emerald-200"
-              >See photos &rarr;</a>
-            </div>
-            <p class="text-xs text-slate-400 flex flex-wrap gap-x-3">
-              <span>hostname: <code>{{ cam.hostname }}</code></span>
-              <span>{{ row.photo_count }} photo{{ '' if row.photo_count == 1 else 's' }}</span>
-              {% if cam.last_seen_at %}
-                <span>last seen {{ cam.last_seen_at.strftime('%Y-%m-%d %H:%M') }} UTC</span>
-              {% endif %}
-              {% if cam.approved_at %}
-                <span>approved {{ cam.approved_at.strftime('%Y-%m-%d') }}</span>
-              {% endif %}
-            </p>
-            <div class="flex gap-2">
-              <form method="post" action="/cameras/{{ cam.id }}/revoke" onsubmit="return confirm('Revoke this camera? Its existing photos stay.');">
-                <button class="text-xs text-rose-400 hover:text-rose-300">Revoke</button>
-              </form>
-            </div>
-          </li>
+        {% for ctx in approved %}
+          {% with cam=ctx.cam, hb=ctx.hb, agent_online=ctx.agent_online,
+                  capture_online=ctx.capture_online %}
+            {% include "_camera_card.html" %}
+          {% endwith %}
         {% endfor %}
       </ul>
     {% else %}
