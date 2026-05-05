@@ -2,15 +2,12 @@
 
 from __future__ import annotations
 
-import json
-from datetime import datetime, timezone
-
 from fastapi import APIRouter, Depends, File, Form, Header, HTTPException, Request, Response, UploadFile
 from sqlmodel import Session, select
 
 from wildwatch_server.db import get_session
 from wildwatch_server.models import Camera
-from wildwatch_server.rate_limit import limiter
+from wildwatch_server.rate_limit import HEARTBEAT_LIMIT, limiter
 
 router = APIRouter(prefix="/api/cameras/agent")
 
@@ -27,9 +24,6 @@ def _camera_from_authz(session: Session, authorization: str | None) -> Camera:
     return cam
 
 
-HEARTBEAT_LIMIT = "120/minute"
-
-
 @router.post("/heartbeat")
 @limiter.limit(HEARTBEAT_LIMIT)
 def heartbeat(
@@ -40,5 +34,5 @@ def heartbeat(
     authorization: str | None = Header(default=None),
     session: Session = Depends(get_session),
 ) -> dict:
-    cam = _camera_from_authz(session, authorization)
+    _camera_from_authz(session, authorization)
     return {"desired_config": None, "commands": []}

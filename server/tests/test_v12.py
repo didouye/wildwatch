@@ -3,9 +3,11 @@
 from __future__ import annotations
 
 import importlib
+import json
 from pathlib import Path
 
 import pytest
+from fastapi.testclient import TestClient
 from sqlalchemy import text
 from sqlmodel import SQLModel
 
@@ -16,7 +18,7 @@ def _reload_app(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     monkeypatch.setenv("WILDWATCH_API_KEY", "admin-key")
     monkeypatch.setenv("WILDWATCH_PHOTOS_DIR", str(tmp_path / "photos"))
     monkeypatch.setenv("WILDWATCH_DB_URL", f"sqlite:///{tmp_path / 'wildwatch.db'}")
-    for var in ("ENROLL", "UPLOAD", "LOGIN", "DEFAULT"):
+    for var in ("ENROLL", "UPLOAD", "LOGIN", "DEFAULT", "HEARTBEAT"):
         monkeypatch.setenv(f"WILDWATCH_RATE_{var}", "1000/minute")
     db_module.reset_engine_cache()
     import wildwatch_server.rate_limit as rl
@@ -61,10 +63,6 @@ def test_migration_v11_to_v12_idempotent(
     with engine.connect() as conn:
         cols = {row[1] for row in conn.execute(text("PRAGMA table_info(cameras)")).fetchall()}
     assert {"desired_config", "last_heartbeat", "agent_last_seen_at", "pending_reorient_delta"} <= cols
-
-
-import json
-from fastapi.testclient import TestClient
 
 
 @pytest.fixture
