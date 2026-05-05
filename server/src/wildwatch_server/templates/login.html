@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html lang="en" class="h-full bg-slate-900">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>WildWatch -- Login</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="min-h-full text-slate-100 flex items-center justify-center px-4">
+  <main class="w-full max-w-sm">
+    <h1 class="text-2xl font-semibold text-center mb-6">WildWatch</h1>
+    <form method="post" action="/login" class="space-y-4 rounded-lg bg-slate-800 border border-slate-700 p-6">
+      <input type="hidden" name="next" value="{{ next }}">
+
+      <label class="block">
+        <span class="text-sm text-slate-300">Username</span>
+        <input
+          type="text"
+          name="username"
+          autocomplete="username"
+          required
+          class="mt-1 w-full rounded bg-slate-900 border border-slate-700 px-3 py-2 text-slate-100"
+        >
+      </label>
+
+      <label class="block">
+        <span class="text-sm text-slate-300">Password</span>
+        <input
+          type="password"
+          name="password"
+          autocomplete="current-password"
+          required
+          class="mt-1 w-full rounded bg-slate-900 border border-slate-700 px-3 py-2 text-slate-100"
+        >
+      </label>
+
+      {% if error %}
+        <p class="text-sm text-rose-400">{{ error }}</p>
+      {% endif %}
+
+      <button type="submit" class="w-full rounded bg-emerald-600 hover:bg-emerald-500 px-3 py-2 font-medium">
+        Sign in
+      </button>
+    </form>
+  </main>
+</body>
+</html>

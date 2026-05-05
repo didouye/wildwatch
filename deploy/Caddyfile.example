@@ -1,0 +1,31 @@
+# Replace {$WILDWATCH_DOMAIN} via the env var in docker-compose.yml.
+# Caddy will provision a Let's Encrypt certificate automatically on first
+# successful HTTPS request, as long as the domain points at this host.
+
+{$WILDWATCH_DOMAIN} {
+    # Reverse proxy to the FastAPI app. The container is reachable as
+    # "server" inside the compose network.
+    reverse_proxy server:8000
+
+    # Compress text responses.
+    encode gzip zstd
+
+    # Allow uploads up to ~50 MB (a 12 MP JPEG is ~5 MB; 50 MB is safe).
+    @uploads path /api/photos
+    request_body @uploads {
+        max_size 50MB
+    }
+
+    # Standard hardening headers.
+    header {
+        X-Content-Type-Options "nosniff"
+        Referrer-Policy "strict-origin-when-cross-origin"
+        # HSTS once you are sure HTTPS works:
+        # Strict-Transport-Security "max-age=31536000; includeSubDomains"
+    }
+
+    log {
+        output stdout
+        format console
+    }
+}

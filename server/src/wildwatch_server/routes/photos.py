@@ -15,6 +15,8 @@ from fastapi import (
     Form,
     HTTPException,
     Query,
+    Request,
+    Response,
     UploadFile,
 )
 from fastapi.responses import FileResponse
@@ -33,6 +35,7 @@ from wildwatch_server.models import (
     PhotoUpdate,
     Tag,
 )
+from wildwatch_server.rate_limit import UPLOAD_LIMIT, limiter
 from wildwatch_server.storage import photos_dir
 from wildwatch_server.thumbnails import THUMBNAIL_SIZES, generate_all, thumbnail_path
 
@@ -109,7 +112,10 @@ def set_photo_tags(session: Session, photo: Photo, names: list[str]) -> None:
 
 
 @router.post("")
+@limiter.limit(UPLOAD_LIMIT)
 async def upload_photo(
+    request: Request,
+    response: Response,
     background_tasks: BackgroundTasks,
     file: UploadFile = File(...),
     captured_at: str | None = Form(default=None),

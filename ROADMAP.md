@@ -127,12 +127,26 @@ Web auth (login/password) and HTTPS termination are deferred to V1.0.
 
 ## V1.0 -- Production deployment
 
-- [ ] Dockerfile + docker-compose.yml for the server
-- [ ] Caddy reverse proxy with automatic HTTPS
-- [ ] RPi installer script (dependencies, systemd, directories)
-- [ ] API rate limiting
-- [ ] Deployment documentation
-- [ ] Test suite for the server
+- [x] Multi-stage `Dockerfile` (uv builder + slim runtime, non-root user,
+      `/data` volume, healthcheck on `/health`)
+- [x] `deploy/docker-compose.yml` pulling
+      `ghcr.io/didouye/wildwatch-server:latest` (no local build needed)
+- [x] Caddy reverse proxy with automatic Let's Encrypt HTTPS
+      (`deploy/Caddyfile.example`)
+- [x] `.github/workflows/docker-publish.yml` building and pushing the
+      multi-arch image (`linux/amd64`, `linux/arm64`) to GHCR on every
+      push to `main` and on every release/tag, with GitHub Actions cache
+- [x] Web authentication: login form + signed session cookie, optional
+      via env vars (`WILDWATCH_WEB_USER` + `WILDWATCH_WEB_PASSWORD_HASH`
+      + `WILDWATCH_SESSION_SECRET`). `/share/{token}` stays public.
+- [x] `python -m wildwatch_server.hash_password` CLI bundled in the image
+- [x] API rate limiting via slowapi: `5/minute` on `POST /login`,
+      `30/minute` on `POST /api/photos`, `200/minute` global default
+- [x] RPi installer (already shipped in V0.5: `_recovery/install_wildwatch.py`)
+- [x] Full deployment guide in `deploy/README.md` (prerequisites, secret
+      generation, first-time setup, updates, backups, troubleshooting)
+- [x] Server test suite covers V1.0: 67 tests (auth, rate limit included),
+      ruff clean
 
 ---
 

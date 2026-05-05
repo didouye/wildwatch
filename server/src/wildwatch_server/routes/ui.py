@@ -13,12 +13,13 @@ from fastapi.templating import Jinja2Templates
 from sqlalchemy import func
 from sqlmodel import Session, select
 
+from wildwatch_server.auth_web import require_web_session
 from wildwatch_server.db import get_session
 from wildwatch_server.models import Photo, PhotoTagLink, Tag
 from wildwatch_server.routes.photos import _delete_photo_assets, set_photo_tags
 from wildwatch_server.storage import photos_dir
 
-router = APIRouter()
+router = APIRouter(dependencies=[Depends(require_web_session)])
 
 TEMPLATES_DIR = Path(__file__).resolve().parent.parent / "templates"
 templates = Jinja2Templates(directory=str(TEMPLATES_DIR))
