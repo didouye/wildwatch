@@ -44,6 +44,7 @@ logs/
 .env
 .env.local
 .env.test
+wildwatch.env
 *.secret
 
 # Runtime data (do not commit photos or databases)

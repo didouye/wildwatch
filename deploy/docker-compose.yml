@@ -1,21 +1,28 @@
 # Production compose stack for WildWatch.
 #
-# 1. Copy this file, .env.example -> .env, and Caddyfile.example -> Caddyfile.
-# 2. Fill in .env (domain, secrets, password hash). See deploy/README.md.
+# 1. Copy this file, .env.example -> wildwatch.env, and
+#    Caddyfile.example -> Caddyfile.
+# 2. Fill in wildwatch.env (domain, secrets, password hash). See
+#    deploy/README.md.
 # 3. docker compose up -d
 #
 # The image is pulled from GHCR; no local build is required.
+#
+# IMPORTANT: bcrypt hashes contain `$` characters (e.g. `$2b$12$...`).
+# `format: raw` disables variable interpolation on the env file so those
+# `$` reach the container verbatim. Requires Docker Compose 2.24+.
 
 services:
   server:
     image: ghcr.io/didouye/wildwatch-server:latest
     pull_policy: always
     restart: unless-stopped
+    env_file:
+      - path: ./wildwatch.env
+        format: raw
+        required: true
     environment:
-      - WILDWATCH_API_KEY=${WILDWATCH_API_KEY:?api key missing}
-      - WILDWATCH_WEB_USER=${WILDWATCH_WEB_USER:-}
-      - WILDWATCH_WEB_PASSWORD_HASH=${WILDWATCH_WEB_PASSWORD_HASH:-}
-      - WILDWATCH_SESSION_SECRET=${WILDWATCH_SESSION_SECRET:-}
+      # These two have fixed values and never appear in wildwatch.env.
       - WILDWATCH_PHOTOS_DIR=/data/photos
       - WILDWATCH_DB_URL=sqlite:////data/wildwatch.db
     volumes:
@@ -30,8 +37,10 @@ services:
     ports:
       - "80:80"
       - "443:443"
-    environment:
-      - WILDWATCH_DOMAIN=${WILDWATCH_DOMAIN:?domain missing}
+    env_file:
+      - path: ./wildwatch.env
+        format: raw
+        required: true
     volumes:
       - ./Caddyfile:/etc/caddy/Caddyfile:ro
       - caddy_data:/data

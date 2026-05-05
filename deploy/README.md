@@ -31,10 +31,10 @@ of the repo on the server.
 mkdir -p /srv/wildwatch && cd /srv/wildwatch
 curl -O https://raw.githubusercontent.com/didouye/wildwatch/main/deploy/docker-compose.yml
 curl -O https://raw.githubusercontent.com/didouye/wildwatch/main/deploy/Caddyfile.example
-curl -O https://raw.githubusercontent.com/didouye/wildwatch/main/deploy/.env.example
+curl -O https://raw.githubusercontent.com/didouye/wildwatch/main/deploy/wildwatch.env.example
 mv Caddyfile.example Caddyfile
-mv .env.example .env
-chmod 600 .env
+mv wildwatch.env.example wildwatch.env
+chmod 600 wildwatch.env
 ```
 
 ### 2. Generate the secrets
@@ -52,7 +52,7 @@ docker run --rm -it ghcr.io/didouye/wildwatch-server:latest \
 # → paste the resulting bcrypt string into WILDWATCH_WEB_PASSWORD_HASH
 ```
 
-### 3. Edit `.env`
+### 3. Edit `wildwatch.env`
 
 ```ini
 WILDWATCH_DOMAIN=wildwatch.example.com
@@ -61,6 +61,9 @@ WILDWATCH_WEB_USER=admin
 WILDWATCH_WEB_PASSWORD_HASH=<from step 2>
 WILDWATCH_SESSION_SECRET=<from step 2>
 ```
+
+Paste the bcrypt hash verbatim, including all the `$` characters. The
+compose file uses `format: raw` so no shell-escaping is needed.
 
 The Caddyfile reads `${WILDWATCH_DOMAIN}` automatically -- no edit needed
 unless you want to customize the headers or rate limits.
@@ -131,6 +134,13 @@ photos if the cache is wiped.
 - **502 from Caddy** -- the server container failed to start. Check
   `docker compose logs server`. Common cause: missing
   `WILDWATCH_SESSION_SECRET` while web auth is enabled.
+- **Login always says "Invalid username or password"** -- the bcrypt
+  hash got mangled on the way into the container. Confirm with
+  `docker compose exec server printenv WILDWATCH_WEB_PASSWORD_HASH`.
+  If the value is truncated at `$2b$12`, your env file is being
+  interpolated. Make sure you are using `wildwatch.env` (not `.env`),
+  the compose file declares `format: raw`, and your Docker Compose is
+  2.24 or newer.
 - **Login loops** -- the cookie is rejected because
   `WILDWATCH_SESSION_SECRET` changed between requests. Rotate the secret
   *only* when you are ready to log everyone out, then restart `server`.
@@ -140,7 +150,7 @@ photos if the cache is wiped.
 
 ## Security checklist
 
-- `.env` is `chmod 600` and not in source control.
+- `wildwatch.env` is `chmod 600` and not in source control.
 - `WILDWATCH_API_KEY` is at least 32 bytes of random entropy.
 - `WILDWATCH_SESSION_SECRET` is unique per deployment.
 - Web user password is high-entropy; the bcrypt cost in passlib defaults
