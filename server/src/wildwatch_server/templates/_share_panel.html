@@ -1,0 +1,27 @@
+<div id="share-panel" class="rounded-lg bg-slate-800 border border-slate-700 p-4 text-sm space-y-2">
+  <h2 class="font-semibold text-slate-200">Public share</h2>
+  {% if photo.share_token %}
+    <p class="text-xs text-slate-400">Public link active:</p>
+    <input
+      type="text"
+      readonly
+      value="/share/{{ photo.share_token }}"
+      class="w-full rounded bg-slate-900 border border-slate-700 px-2 py-1 text-xs"
+      onclick="this.select()"
+    >
+    <button
+      hx-post="/photos/{{ photo.id }}/unshare"
+      hx-target="#share-panel"
+      hx-swap="outerHTML"
+      class="rounded bg-rose-600 hover:bg-rose-500 px-2 py-1 text-xs font-medium"
+    >Revoke</button>
+  {% else %}
+    <p class="text-xs text-slate-400">Not shared. Click below to generate a public link.</p>
+    <button
+      hx-post="/photos/{{ photo.id }}/share"
+      hx-target="#share-panel"
+      hx-swap="outerHTML"
+      class="rounded bg-emerald-600 hover:bg-emerald-500 px-2 py-1 text-xs font-medium"
+    >Generate share link</button>
+  {% endif %}
+</div>

@@ -42,15 +42,18 @@ def reset_engine_cache() -> None:
 
 
 def init_db() -> None:
-    """Create tables if they do not exist.
+    """Create tables if they do not exist, then apply V0.5 column upgrades.
 
-    For V0.4a we lean on SQLModel.metadata.create_all rather than running
-    Alembic migrations from inside the app: the schema is small, the dev
-    workflow is simpler, and migrations will only matter once the schema
-    starts evolving (V0.5+). The Alembic setup is still in place so we can
-    grow into it.
+    SQLModel.metadata.create_all handles fresh installs (creates every
+    declared table). Existing V0.4 databases get the missing columns added
+    by `upgrade_to_v05`. Both paths are idempotent.
     """
-    SQLModel.metadata.create_all(get_engine())
+    engine = get_engine()
+    SQLModel.metadata.create_all(engine)
+    # Imported here to avoid a circular import (migrations imports db.get_engine).
+    from wildwatch_server.migrations import upgrade_to_v05
+
+    upgrade_to_v05(engine)
 
 
 def get_session() -> Iterator[Session]:

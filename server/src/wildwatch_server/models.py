@@ -1,14 +1,27 @@
-"""SQLModel definitions for the WildWatch catalog."""
+"""SQLModel definitions for the WildWatch catalog.
 
-from __future__ import annotations
+Note: this module intentionally avoids `from __future__ import annotations`
+because SQLModel's `Relationship(...)` resolves the annotated type at class
+construction time. With deferred annotations, `list["Tag"]` becomes a string
+forward-ref that SQLAlchemy refuses, expecting `Mapped[...]` instead.
+"""
 
 from datetime import datetime, timezone
 
-from sqlmodel import Field, SQLModel
+from sqlmodel import Field, Relationship, SQLModel
 
 
 def utcnow() -> datetime:
     return datetime.now(timezone.utc)
+
+
+class PhotoTagLink(SQLModel, table=True):
+    """Many-to-many link table between photos and tags."""
+
+    __tablename__ = "photo_tags"
+
+    photo_id: int = Field(foreign_key="photos.id", primary_key=True, ondelete="CASCADE")
+    tag_id: int = Field(foreign_key="tags.id", primary_key=True, ondelete="CASCADE")
 
 
 class Photo(SQLModel, table=True):
@@ -51,6 +64,24 @@ class Photo(SQLModel, table=True):
     memory_avail_mb: float | None = None
     load_avg_1min: float | None = None
 
+    # V0.5 -- curation
+    is_favorite: bool = Field(default=False, index=True)
+    share_token: str | None = Field(default=None, unique=True, index=True)
+
+    tags: list["Tag"] = Relationship(back_populates="photos", link_model=PhotoTagLink)
+
+
+class Tag(SQLModel, table=True):
+    """Free-form label attached to one or more photos."""
+
+    __tablename__ = "tags"
+
+    id: int | None = Field(default=None, primary_key=True)
+    name: str = Field(unique=True, index=True)  # COLLATE NOCASE applied at SQL level
+    color: str | None = None
+
+    photos: list[Photo] = Relationship(back_populates="tags", link_model=PhotoTagLink)
+
 
 class PhotoRead(SQLModel):
     """API response model for a single photo."""
@@ -73,6 +104,16 @@ class PhotoRead(SQLModel):
     cpu_temp: float | None = None
     memory_avail_mb: float | None = None
     load_avg_1min: float | None = None
+    is_favorite: bool = False
+    share_token: str | None = None
+    tags: list[str] = []
+
+
+class PhotoUpdate(SQLModel):
+    """Body of PATCH /api/photos/{id}."""
+
+    is_favorite: bool | None = None
+    tags: list[str] | None = None
 
 
 class PhotoListResponse(SQLModel):
@@ -92,3 +133,19 @@ class ReindexResponse(SQLModel):
     scanned: int
     inserted: int
     skipped: int
+
+
+class TagRead(SQLModel):
+    id: int
+    name: str
+    color: str | None = None
+    photo_count: int = 0
+
+
+class BulkDeleteRequest(SQLModel):
+    ids: list[int]
+
+
+class BulkDeleteResponse(SQLModel):
+    deleted: int
+    not_found: int

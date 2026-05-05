@@ -113,11 +113,17 @@ Web auth (login/password) and HTTPS termination are deferred to V1.0.
 
 ## V0.5 -- Sharing and management
 
-- [ ] Manual tags on photos
-- [ ] Favorites
-- [ ] Public share link for a photo
-- [ ] Stats page (photos/day, activity per hour, etc.)
-- [ ] Bulk delete
+- [x] Manual tags on photos (table-backed, case-insensitive, free-form names)
+- [x] Favorites (boolean per photo, gallery filter, htmx star toggle)
+- [x] Public share link (random per-photo `share_token`, revocable)
+- [x] Public share view (`/share/{token}` template, hostname/system stats stripped)
+- [x] Stats page with Chart.js (photos per day, per hour, per camera, per tag)
+- [x] Bulk delete (UI selection mode + `POST /api/photos/bulk-delete`)
+- [x] PATCH `/api/photos/{id}` for `is_favorite` + `tags`
+- [x] `GET /api/tags` (with photo counts) + `DELETE /api/tags/{id}` (cascade unlinks)
+- [x] In-place migration script `python -m wildwatch_server.migrations`
+      that brings a V0.4 SQLite DB up to V0.5 idempotently
+- [x] 57 server tests green (V0.4 carried over + 17 new V0.5 tests)
 
 ## V1.0 -- Production deployment
 

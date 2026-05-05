@@ -1,0 +1,22 @@
+<div id="tag-chips" class="flex flex-wrap items-center gap-2">
+  {% for tag in photo.tags %}
+    <span class="rounded-full bg-emerald-700/40 border border-emerald-500/40 px-2 py-0.5 text-xs text-emerald-100">{{ tag.name }}</span>
+  {% else %}
+    <span class="text-sm text-slate-500">No tags yet.</span>
+  {% endfor %}
+  <form
+    class="ml-auto flex items-center gap-2"
+    hx-post="/photos/{{ photo.id }}/tags"
+    hx-target="#tag-chips"
+    hx-swap="outerHTML"
+  >
+    <input
+      type="text"
+      name="names"
+      value="{{ tag_names }}"
+      placeholder="comma,separated,tags"
+      class="rounded bg-slate-900 border border-slate-700 px-2 py-1 text-xs text-slate-100 w-48"
+    >
+    <button class="rounded bg-emerald-600 hover:bg-emerald-500 px-2 py-1 text-xs font-medium">Save</button>
+  </form>
+</div>

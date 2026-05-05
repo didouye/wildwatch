@@ -2,18 +2,20 @@
 
 from __future__ import annotations
 
+import secrets
 from datetime import date, datetime, timezone
 from pathlib import Path
 from urllib.parse import urlencode
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Request
+from fastapi import APIRouter, Depends, Form, HTTPException, Query, Request
 from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 from sqlalchemy import func
 from sqlmodel import Session, select
 
 from wildwatch_server.db import get_session
-from wildwatch_server.models import Photo
+from wildwatch_server.models import Photo, PhotoTagLink, Tag
+from wildwatch_server.routes.photos import _delete_photo_assets, set_photo_tags
 from wildwatch_server.storage import photos_dir
 
 router = APIRouter()
@@ -38,6 +40,10 @@ def _parse_date(value: str | None) -> date | None:
         raise HTTPException(status_code=400, detail="Invalid date") from exc
 
 
+def _bool_param(value: str | None) -> bool:
+    return value is not None and value.lower() in {"1", "true", "yes", "on"}
+
+
 @router.get("/gallery", response_class=HTMLResponse)
 def gallery(
     request: Request,
@@ -45,10 +51,13 @@ def gallery(
     from_: str | None = Query(default=None, alias="from"),
     to: str | None = Query(default=None),
     hostname: str | None = Query(default=None),
+    favorite: str | None = Query(default=None),
+    tag: str | None = Query(default=None),
     session: Session = Depends(get_session),
 ) -> HTMLResponse:
     from_date = _parse_date(from_)
     to_date = _parse_date(to)
+    favorite_only = _bool_param(favorite)
 
     query = select(Photo)
     count_query = select(func.count()).select_from(Photo)
@@ -64,6 +73,17 @@ def gallery(
     if hostname:
         query = query.where(Photo.hostname == hostname)
         count_query = count_query.where(Photo.hostname == hostname)
+    if favorite_only:
+        query = query.where(Photo.is_favorite.is_(True))
+        count_query = count_query.where(Photo.is_favorite.is_(True))
+    if tag:
+        tag_q = (
+            select(PhotoTagLink.photo_id)
+            .join(Tag, Tag.id == PhotoTagLink.tag_id)
+            .where(func.lower(Tag.name) == tag.lower())
+        )
+        query = query.where(Photo.id.in_(tag_q))
+        count_query = count_query.where(Photo.id.in_(tag_q))
 
     total = int(session.exec(count_query).one())
     total_pages = max(1, (total + PAGE_SIZE - 1) // PAGE_SIZE)
@@ -77,6 +97,9 @@ def gallery(
     hostnames = sorted(
         {row[0] for row in session.exec(select(Photo.hostname).distinct()).all() if row[0]}
     )
+    all_tags = sorted(
+        row[0] for row in session.exec(select(Tag.name).distinct()).all()
+    )
 
     base_qs = {}
     if from_:
@@ -85,6 +108,10 @@ def gallery(
         base_qs["to"] = to
     if hostname:
         base_qs["hostname"] = hostname
+    if favorite_only:
+        base_qs["favorite"] = "true"
+    if tag:
+        base_qs["tag"] = tag
     prev_qs = urlencode({**base_qs, "page": page - 1}) if page > 1 else ""
     next_qs = urlencode({**base_qs, "page": page + 1}) if page < total_pages else ""
 
@@ -98,13 +125,23 @@ def gallery(
         "prev_qs": prev_qs,
         "next_qs": next_qs,
         "hostnames": hostnames,
-        "filters": {"from_": from_, "to": to, "hostname": hostname},
+        "all_tags": all_tags,
+        "filters": {
+            "from_": from_,
+            "to": to,
+            "hostname": hostname,
+            "favorite": favorite_only,
+            "tag": tag,
+        },
     }
 
     template = (
         "_gallery_grid.html" if request.headers.get("HX-Request") else "gallery.html"
     )
     return templates.TemplateResponse(request=request, name=template, context=context)
+
+
+# ---------- Photo detail ----------
 
 
 @router.get("/photos/{photo_id}", response_class=HTMLResponse)
@@ -117,7 +154,6 @@ def photo_detail(
     if photo is None:
         raise HTTPException(status_code=404, detail="Photo not found")
 
-    # Find prev/next by captured_at order (desc → "previous" is the more recent one).
     prev_row = session.exec(
         select(Photo.id)
         .where(Photo.captured_at > photo.captured_at)
@@ -138,6 +174,7 @@ def photo_detail(
             "photo": photo,
             "prev_id": prev_row,
             "next_id": next_row,
+            "tag_names": ", ".join(sorted(t.name for t in photo.tags)),
         },
     )
 
@@ -152,6 +189,183 @@ def photo_download(
     full_path = photos_dir() / photo.file_path
     if not full_path.exists():
         raise HTTPException(status_code=404, detail="File missing on disk")
-    return FileResponse(
-        full_path, media_type="image/jpeg", filename=full_path.name
+    return FileResponse(full_path, media_type="image/jpeg", filename=full_path.name)
+
+
+# ---------- Favorites ----------
+
+
+@router.post("/photos/{photo_id}/favorite", response_class=HTMLResponse)
+def toggle_favorite(
+    photo_id: int,
+    request: Request,
+    session: Session = Depends(get_session),
+) -> HTMLResponse:
+    photo = session.get(Photo, photo_id)
+    if photo is None:
+        raise HTTPException(status_code=404, detail="Photo not found")
+    photo.is_favorite = not photo.is_favorite
+    session.add(photo)
+    session.commit()
+    session.refresh(photo)
+    # htmx returns just the updated star fragment; full-page POST falls back to detail.
+    if request.headers.get("HX-Request"):
+        return templates.TemplateResponse(
+            request=request,
+            name="_favorite_button.html",
+            context={"photo": photo},
+        )
+    return HTMLResponse(
+        f"<span data-favorite='{photo.is_favorite}'>{'star' if photo.is_favorite else ''}</span>"
+    )
+
+
+# ---------- Tags ----------
+
+
+@router.post("/photos/{photo_id}/tags", response_class=HTMLResponse)
+def update_tags(
+    photo_id: int,
+    request: Request,
+    names: str = Form(default=""),
+    session: Session = Depends(get_session),
+) -> HTMLResponse:
+    photo = session.get(Photo, photo_id)
+    if photo is None:
+        raise HTTPException(status_code=404, detail="Photo not found")
+    parsed = [n.strip() for n in names.split(",") if n.strip()]
+    set_photo_tags(session, photo, parsed)
+    session.add(photo)
+    session.commit()
+    session.refresh(photo)
+    if request.headers.get("HX-Request"):
+        return templates.TemplateResponse(
+            request=request,
+            name="_tag_chips.html",
+            context={"photo": photo, "tag_names": ", ".join(sorted(t.name for t in photo.tags))},
+        )
+    return HTMLResponse(",".join(sorted(t.name for t in photo.tags)))
+
+
+# ---------- Share ----------
+
+
+@router.post("/photos/{photo_id}/share")
+def create_share(
+    photo_id: int, request: Request, session: Session = Depends(get_session)
+):
+    photo = session.get(Photo, photo_id)
+    if photo is None:
+        raise HTTPException(status_code=404, detail="Photo not found")
+    photo.share_token = secrets.token_urlsafe(24)
+    session.add(photo)
+    session.commit()
+    session.refresh(photo)
+    if request.headers.get("HX-Request"):
+        return templates.TemplateResponse(
+            request=request, name="_share_panel.html", context={"photo": photo}
+        )
+    return {"token": photo.share_token, "url": f"/share/{photo.share_token}"}
+
+
+@router.post("/photos/{photo_id}/unshare")
+def revoke_share(
+    photo_id: int, request: Request, session: Session = Depends(get_session)
+):
+    photo = session.get(Photo, photo_id)
+    if photo is None:
+        raise HTTPException(status_code=404, detail="Photo not found")
+    photo.share_token = None
+    session.add(photo)
+    session.commit()
+    session.refresh(photo)
+    if request.headers.get("HX-Request"):
+        return templates.TemplateResponse(
+            request=request, name="_share_panel.html", context={"photo": photo}
+        )
+    return {"unshared": photo_id}
+
+
+# ---------- Bulk actions ----------
+
+
+@router.post("/photos/bulk")
+def bulk_action(
+    action: str = Form(...),
+    ids: list[int] = Form(default=[]),
+    session: Session = Depends(get_session),
+) -> dict:
+    if action not in {"delete", "favorite", "unfavorite"}:
+        raise HTTPException(status_code=400, detail=f"Unknown action: {action}")
+
+    affected = 0
+    for photo_id in ids:
+        photo = session.get(Photo, photo_id)
+        if photo is None:
+            continue
+        if action == "delete":
+            _delete_photo_assets(photo)
+            session.delete(photo)
+        elif action == "favorite":
+            photo.is_favorite = True
+            session.add(photo)
+        elif action == "unfavorite":
+            photo.is_favorite = False
+            session.add(photo)
+        affected += 1
+    session.commit()
+    return {"action": action, "affected": affected}
+
+
+# ---------- Stats page ----------
+
+
+@router.get("/stats", response_class=HTMLResponse)
+def stats_page(request: Request, session: Session = Depends(get_session)) -> HTMLResponse:
+    total = int(session.exec(select(func.count()).select_from(Photo)).one())
+
+    by_day_rows = session.exec(
+        select(
+            func.strftime("%Y-%m-%d", Photo.captured_at).label("day"),
+            func.count(),
+        ).group_by("day").order_by("day")
+    ).all()
+    by_day = [{"day": r[0], "count": int(r[1])} for r in by_day_rows if r[0]]
+
+    by_hour_rows = session.exec(
+        select(
+            func.strftime("%H", Photo.captured_at).label("hour"),
+            func.count(),
+        ).group_by("hour")
+    ).all()
+    by_hour = {f"{h:02d}": 0 for h in range(24)}
+    for r in by_hour_rows:
+        if r[0]:
+            by_hour[r[0]] = int(r[1])
+
+    by_host_rows = session.exec(
+        select(Photo.hostname, func.count()).group_by(Photo.hostname)
+    ).all()
+    by_hostname = [
+        {"hostname": (r[0] or "unknown"), "count": int(r[1])} for r in by_host_rows
+    ]
+
+    by_tag_rows = session.exec(
+        select(Tag.name, func.count(PhotoTagLink.photo_id))
+        .join(PhotoTagLink, PhotoTagLink.tag_id == Tag.id)
+        .group_by(Tag.name)
+        .order_by(func.count(PhotoTagLink.photo_id).desc())
+    ).all()
+    by_tag = [{"name": r[0], "count": int(r[1])} for r in by_tag_rows]
+
+    return templates.TemplateResponse(
+        request=request,
+        name="stats.html",
+        context={
+            "total": total,
+            "by_day": by_day,
+            "by_hour": by_hour,
+            "by_hostname": by_hostname,
+            "by_tag": by_tag,
+        },
     )

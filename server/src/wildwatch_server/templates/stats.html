@@ -1,0 +1,85 @@
+{% extends "base.html" %}
+
+{% block title %}WildWatch -- Stats{% endblock %}
+
+{% block content %}
+<section class="space-y-6">
+  <header class="flex items-baseline justify-between">
+    <h1 class="text-2xl font-semibold">Stats</h1>
+    <p class="text-sm text-slate-400">{{ total }} photo{{ '' if total == 1 else 's' }} total</p>
+  </header>
+
+  <div class="grid gap-6 md:grid-cols-2">
+    <div class="rounded-lg bg-slate-800 border border-slate-700 p-4">
+      <h2 class="text-sm font-semibold text-slate-200 mb-2">Photos per day</h2>
+      <canvas id="chart-by-day" height="200"></canvas>
+    </div>
+    <div class="rounded-lg bg-slate-800 border border-slate-700 p-4">
+      <h2 class="text-sm font-semibold text-slate-200 mb-2">Photos per hour of day</h2>
+      <canvas id="chart-by-hour" height="200"></canvas>
+    </div>
+    <div class="rounded-lg bg-slate-800 border border-slate-700 p-4">
+      <h2 class="text-sm font-semibold text-slate-200 mb-2">Photos per camera</h2>
+      <canvas id="chart-by-host" height="200"></canvas>
+    </div>
+    <div class="rounded-lg bg-slate-800 border border-slate-700 p-4">
+      <h2 class="text-sm font-semibold text-slate-200 mb-2">Photos per tag</h2>
+      <canvas id="chart-by-tag" height="200"></canvas>
+    </div>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
+  <script id="stats-data" type="application/json">{
+    "byDay":  {{ by_day | tojson }},
+    "byHour": {{ by_hour | tojson }},
+    "byHost": {{ by_hostname | tojson }},
+    "byTag":  {{ by_tag | tojson }}
+  }</script>
+  <script>
+    const data = JSON.parse(document.getElementById("stats-data").textContent);
+    const slate = "rgb(148 163 184)";
+    const emerald = "rgb(52 211 153)";
+    const sky = "rgb(56 189 248)";
+
+    new Chart(document.getElementById("chart-by-day"), {
+      type: "bar",
+      data: {
+        labels: data.byDay.map(d => d.day),
+        datasets: [{ label: "Photos", data: data.byDay.map(d => d.count), backgroundColor: emerald }]
+      },
+      options: { plugins: { legend: { display: false } }, scales: { x: { ticks: { color: slate } }, y: { ticks: { color: slate } } } }
+    });
+
+    new Chart(document.getElementById("chart-by-hour"), {
+      type: "bar",
+      data: {
+        labels: Object.keys(data.byHour),
+        datasets: [{ label: "Photos", data: Object.values(data.byHour), backgroundColor: sky }]
+      },
+      options: { plugins: { legend: { display: false } }, scales: { x: { ticks: { color: slate } }, y: { ticks: { color: slate } } } }
+    });
+
+    new Chart(document.getElementById("chart-by-host"), {
+      type: "doughnut",
+      data: {
+        labels: data.byHost.map(d => d.hostname),
+        datasets: [{ data: data.byHost.map(d => d.count), backgroundColor: ["#34d399", "#38bdf8", "#fbbf24", "#f87171", "#a78bfa"] }]
+      },
+      options: { plugins: { legend: { labels: { color: slate } } } }
+    });
+
+    new Chart(document.getElementById("chart-by-tag"), {
+      type: "bar",
+      data: {
+        labels: data.byTag.map(d => d.name),
+        datasets: [{ label: "Photos", data: data.byTag.map(d => d.count), backgroundColor: emerald }]
+      },
+      options: {
+        indexAxis: "y",
+        plugins: { legend: { display: false } },
+        scales: { x: { ticks: { color: slate } }, y: { ticks: { color: slate } } }
+      }
+    });
+  </script>
+</section>
+{% endblock %}

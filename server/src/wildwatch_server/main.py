@@ -5,7 +5,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 
 from wildwatch_server.db import init_db
-from wildwatch_server.routes import admin, health, photos, stats, thumbnails, ui
+from wildwatch_server.routes import admin, health, photos, share, stats, tags, thumbnails, ui
 
 
 @asynccontextmanager
@@ -21,6 +21,8 @@ def create_app() -> FastAPI:
     app.include_router(stats.router)
     app.include_router(admin.router)
     app.include_router(thumbnails.router)
+    app.include_router(tags.router)
+    app.include_router(share.router)
     app.include_router(ui.router)
     return app
 

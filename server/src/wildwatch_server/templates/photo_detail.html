@@ -5,7 +5,10 @@
 {% block content %}
 <section class="space-y-6">
   <div class="flex items-baseline justify-between">
-    <h1 class="text-2xl font-semibold">Photo #{{ photo.id }}</h1>
+    <div class="flex items-center gap-3">
+      <h1 class="text-2xl font-semibold">Photo #{{ photo.id }}</h1>
+      {% include "_favorite_button.html" %}
+    </div>
     <a href="/gallery" class="text-sm text-slate-400 hover:text-slate-200">&larr; Back to gallery</a>
   </div>
 
@@ -19,6 +22,13 @@
          class="inline-block rounded bg-emerald-600 hover:bg-emerald-500 px-4 py-2 font-medium">
         Download original
       </a>
+
+      <div class="rounded-lg bg-slate-800 border border-slate-700 p-4 text-sm space-y-2">
+        <h2 class="font-semibold text-slate-200">Tags</h2>
+        {% include "_tag_chips.html" %}
+      </div>
+
+      {% include "_share_panel.html" %}
 
       <div class="rounded-lg bg-slate-800 border border-slate-700 p-4 text-sm">
         <h2 class="font-semibold mb-3 text-slate-200">Metadata</h2>

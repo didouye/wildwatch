@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html lang="en" class="h-full bg-slate-900">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="robots" content="noindex,nofollow">
+  <title>Shared photo -- WildWatch</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="min-h-full text-slate-100">
+  <main class="mx-auto max-w-4xl px-4 py-10 space-y-6">
+    <header class="flex items-baseline justify-between">
+      <h1 class="text-xl font-semibold">Shared photo</h1>
+      <p class="text-xs text-slate-500">Public read-only view</p>
+    </header>
+
+    <div class="rounded-lg overflow-hidden bg-slate-800 border border-slate-700">
+      <img src="/share/{{ token }}/thumb/800" alt="Shared photo" class="w-full h-auto">
+    </div>
+
+    <div class="rounded-lg bg-slate-800 border border-slate-700 p-4 text-sm space-y-2">
+      <div class="grid grid-cols-2 gap-y-1 gap-x-3">
+        <span class="text-slate-400">Captured at</span>
+        <span>{{ photo.captured_at.strftime('%Y-%m-%d %H:%M:%S') }} UTC</span>
+        {% if photo.motion_score is not none %}
+          <span class="text-slate-400">Motion score</span>
+          <span>{{ '%.3f'|format(photo.motion_score) }}</span>
+        {% endif %}
+        {% if tag_names %}
+          <span class="text-slate-400">Tags</span>
+          <span class="flex flex-wrap gap-1">
+            {% for name in tag_names %}
+              <span class="rounded-full bg-emerald-700/40 border border-emerald-500/40 px-2 py-0.5 text-xs">{{ name }}</span>
+            {% endfor %}
+          </span>
+        {% endif %}
+      </div>
+      <a href="/share/{{ token }}/file" class="inline-block mt-2 rounded bg-emerald-600 hover:bg-emerald-500 px-3 py-1.5 text-xs font-medium">Download original</a>
+    </div>
+
+    <p class="text-xs text-slate-500 text-center">Powered by WildWatch.</p>
+  </main>
+</body>
+</html>

@@ -34,6 +34,19 @@
         {% endfor %}
       </select>
     </label>
+    <label class="flex flex-col text-sm">
+      <span class="text-slate-300 mb-1">Tag</span>
+      <select name="tag" class="rounded bg-slate-900 border border-slate-700 px-2 py-1 text-slate-100">
+        <option value="">Any</option>
+        {% for t in all_tags %}
+          <option value="{{ t }}" {% if filters.tag == t %}selected{% endif %}>{{ t }}</option>
+        {% endfor %}
+      </select>
+    </label>
+    <label class="flex items-center gap-2 text-sm pt-5">
+      <input type="checkbox" name="favorite" value="true" {% if filters.favorite %}checked{% endif %} class="rounded">
+      <span class="text-slate-200">Favorites only</span>
+    </label>
     <button type="submit" class="rounded bg-emerald-600 hover:bg-emerald-500 px-3 py-1.5 text-sm font-medium">Apply</button>
     <a href="/gallery" class="text-sm text-slate-400 hover:text-slate-200">Reset</a>
   </form>
