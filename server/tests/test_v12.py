@@ -209,6 +209,21 @@ def test_cameras_page_uses_card_fragment(client: TestClient) -> None:
     assert f'hx-get="/cameras/{cam["id"]}/card"' in res.text
 
 
+def test_camera_card_includes_rename_and_metadata(client: TestClient) -> None:
+    cam = _enroll(client, "rpi-1")
+    _approve(client, cam["id"])
+    res = client.get(f"/cameras/{cam['id']}/card")
+    assert res.status_code == 200
+    html = res.text
+    # Rename form must be reachable from the card.
+    assert f'action="/cameras/{cam["id"]}/rename"' in html
+    assert 'name="display_name"' in html
+    # Hostname is shown so the operator can identify the device.
+    assert "rpi-1" in html
+    # photo_count rendered (0 photos at this point).
+    assert "0 photo" in html
+
+
 def test_heartbeat_rejects_non_dict_status(client: TestClient) -> None:
     cam = _enroll(client)
     _approve(client, cam["id"])

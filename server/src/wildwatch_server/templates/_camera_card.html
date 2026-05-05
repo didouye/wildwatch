@@ -6,7 +6,16 @@
   hx-swap="outerHTML"
 >
   <div class="flex items-baseline justify-between gap-3">
-    <p class="font-medium">{{ cam.display_name or cam.hostname }}</p>
+    <form method="post" action="/cameras/{{ cam.id }}/rename" class="flex items-center gap-2 grow">
+      <input
+        type="text"
+        name="display_name"
+        value="{{ cam.display_name or '' }}"
+        placeholder="{{ cam.hostname }}"
+        class="bg-transparent border-b border-slate-700 hover:border-emerald-500 focus:border-emerald-500 outline-none px-1 py-0.5 text-base font-medium text-slate-100 grow"
+      >
+      <button class="text-xs text-slate-400 hover:text-slate-200">Save</button>
+    </form>
     <div class="flex gap-2 text-xs">
       <span class="px-2 py-0.5 rounded {% if agent_online %}bg-emerald-700{% else %}bg-rose-700{% endif %}">
         Agent {{ "online" if agent_online else "offline" }}
@@ -16,6 +25,17 @@
       </span>
     </div>
   </div>
+
+  <p class="text-xs text-slate-400 flex flex-wrap gap-x-3">
+    <span>hostname: <code>{{ cam.hostname }}</code></span>
+    <span>{{ photo_count }} photo{{ '' if photo_count == 1 else 's' }}</span>
+    {% if cam.last_seen_at %}
+      <span>last seen {{ cam.last_seen_at.strftime('%Y-%m-%d %H:%M') }} UTC</span>
+    {% endif %}
+    {% if cam.approved_at %}
+      <span>approved {{ cam.approved_at.strftime('%Y-%m-%d') }}</span>
+    {% endif %}
+  </p>
 
   <div class="flex gap-3">
     <img

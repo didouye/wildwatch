@@ -353,7 +353,7 @@ def _photo_count(session: Session, cam: Camera) -> int:
     )
 
 
-def _camera_card_context(cam: Camera) -> dict:
+def _camera_card_context(cam: Camera, session: Session) -> dict:
     """Compute fields the card template needs (parses last_heartbeat)."""
     import json
     from datetime import datetime, timezone
@@ -379,6 +379,7 @@ def _camera_card_context(cam: Camera) -> dict:
         "agent_online": agent_online,
         "agent_age_s": agent_age_s,
         "capture_online": capture_online,
+        "photo_count": _photo_count(session, cam),
     }
 
 
@@ -392,7 +393,7 @@ def camera_card(
     return templates.TemplateResponse(
         request=request,
         name="_camera_card.html",
-        context=_camera_card_context(cam),
+        context=_camera_card_context(cam, session),
     )
 
 
@@ -412,7 +413,7 @@ def cameras_page(
         if c.status == "revoked"
     ]
     approved = [
-        _camera_card_context(c) | {"photo_count": _photo_count(session, c)}
+        _camera_card_context(c, session)
         for c in rows
         if c.status == "approved"
     ]

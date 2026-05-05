@@ -58,7 +58,7 @@
       <ul class="space-y-2">
         {% for ctx in approved %}
           {% with cam=ctx.cam, hb=ctx.hb, agent_online=ctx.agent_online,
-                  capture_online=ctx.capture_online %}
+                  capture_online=ctx.capture_online, photo_count=ctx.photo_count %}
             {% include "_camera_card.html" %}
           {% endwith %}
         {% endfor %}
