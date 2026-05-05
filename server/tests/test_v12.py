@@ -157,3 +157,20 @@ def test_heartbeat_without_preview_does_not_create_file(client: TestClient, tmp_
     assert res.status_code == 200
     from wildwatch_server.storage import previews_dir
     assert not (previews_dir() / f"{cam['id']}.jpg").exists()
+
+
+def test_get_preview_returns_jpeg(client: TestClient) -> None:
+    cam = _enroll(client)
+    _approve(client, cam["id"])
+    blob = b"\xff\xd8\xff\xe0jpegdata"
+    _heartbeat(client, cam["token"], {"agent": {"version": "1.2.0"}}, preview=blob)
+
+    res = client.get(f"/preview/{cam['id']}")
+    assert res.status_code == 200
+    assert res.headers["content-type"] == "image/jpeg"
+    assert res.content == blob
+
+
+def test_get_preview_returns_404_when_missing(client: TestClient) -> None:
+    res = client.get("/preview/9999")
+    assert res.status_code == 404

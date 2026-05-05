@@ -17,7 +17,7 @@ from wildwatch_server.auth_web import require_web_session
 from wildwatch_server.db import get_session
 from wildwatch_server.models import Camera, Photo, PhotoTagLink, Tag
 from wildwatch_server.routes.photos import _delete_photo_assets, set_photo_tags
-from wildwatch_server.storage import photos_dir
+from wildwatch_server.storage import photos_dir, previews_dir
 
 router = APIRouter(dependencies=[Depends(require_web_session)])
 
@@ -30,6 +30,18 @@ PAGE_SIZE = 24
 @router.get("/", include_in_schema=False)
 def root() -> RedirectResponse:
     return RedirectResponse(url="/gallery", status_code=302)
+
+
+@router.get("/preview/{camera_id}", include_in_schema=False)
+def preview(camera_id: int) -> FileResponse:
+    p = previews_dir() / f"{camera_id}.jpg"
+    if not p.exists():
+        raise HTTPException(status_code=404, detail="No preview yet")
+    return FileResponse(
+        p,
+        media_type="image/jpeg",
+        headers={"Cache-Control": "no-store"},
+    )
 
 
 def _parse_date(value: str | None) -> date | None:
