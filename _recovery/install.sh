@@ -29,6 +29,12 @@ require() {
 require git
 require uv
 
+# Step out of $DEST before removing it: the parent shell may be sitting
+# inside $DEST (left over from a previous attempt that did `cd $DEST`),
+# which would be inherited as our cwd. Deleting our own cwd makes git
+# fail with "Unable to read current working directory".
+cd /tmp
+
 if [[ -e "$DEST" ]]; then
     echo "==> Removing leftover $DEST"
     rm -rf "$DEST"
