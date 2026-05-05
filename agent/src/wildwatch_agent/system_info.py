@@ -15,7 +15,7 @@ def cpu_temp_c() -> float | None:
     """Read CPU temperature in Celsius from the thermal_zone0 sysfs entry."""
     try:
         raw = Path("/sys/class/thermal/thermal_zone0/temp").read_text().strip()
-        return int(raw) / 1000.0
+        return round(int(raw) / 1000.0, 1)
     except (FileNotFoundError, PermissionError, ValueError, OSError):
         return None
 
@@ -34,8 +34,8 @@ def memory_mb() -> tuple[float | None, float | None]:
                 info[key] = int(value[0])
         avail_kb = info.get("MemAvailable") or info.get("MemFree")
         total_kb = info.get("MemTotal")
-        avail = avail_kb / 1024.0 if avail_kb is not None else None
-        total = total_kb / 1024.0 if total_kb is not None else None
+        avail = round(avail_kb / 1024.0, 1) if avail_kb is not None else None
+        total = round(total_kb / 1024.0, 1) if total_kb is not None else None
         return avail, total
     except (FileNotFoundError, PermissionError, ValueError, OSError):
         return None, None
@@ -44,7 +44,7 @@ def memory_mb() -> tuple[float | None, float | None]:
 def disk_avail_mb(path: str = "/") -> float | None:
     """Return free disk space in MB for the filesystem containing ``path``."""
     try:
-        return shutil.disk_usage(path).free / (1024 * 1024)
+        return round(shutil.disk_usage(path).free / (1024 * 1024), 1)
     except (FileNotFoundError, PermissionError, OSError):
         return None
 
@@ -52,7 +52,7 @@ def disk_avail_mb(path: str = "/") -> float | None:
 def load_avg_1min() -> float | None:
     """Return the 1-minute load average, or ``None`` if unavailable."""
     try:
-        return os.getloadavg()[0]
+        return round(os.getloadavg()[0], 2)
     except (OSError, AttributeError):
         return None
 
