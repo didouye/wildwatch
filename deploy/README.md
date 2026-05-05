@@ -9,6 +9,12 @@ production behind Caddy with automatic HTTPS, on a Linux VPS with Docker.
 > built-in compose runner cannot read host-mounted env files, so the
 > Caddy + `wildwatch.env` setup below does not apply -- bring your own
 > reverse proxy (Traefik, Nginx Proxy Manager, ...) for HTTPS.
+>
+> **Watch out for `$` escaping** when you paste the bcrypt hash into
+> Portainer: every `$` must be doubled (e.g. `$2b$12$abc...` becomes
+> `$$2b$$12$$abc...`). Portainer writes the values to a `.env` file that
+> compose still substitutes. If you skip the doubling, your hash is
+> truncated to `$2b$12` and login is rejected.
 
 You only need three files on the host: `docker-compose.yml`, `Caddyfile`,
 and `.env`. The image is pulled from GHCR -- no local build, no checkout

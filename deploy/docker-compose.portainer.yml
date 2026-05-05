@@ -12,12 +12,20 @@
 # 2. Scroll down to "Environment variables" and add:
 #       WILDWATCH_API_KEY            = openssl rand -hex 32
 #       WILDWATCH_WEB_USER           = admin
-#       WILDWATCH_WEB_PASSWORD_HASH  = paste the bcrypt hash verbatim
+#       WILDWATCH_WEB_PASSWORD_HASH  = bcrypt hash with `$` doubled (see below!)
 #       WILDWATCH_SESSION_SECRET     = openssl rand -hex 32
 # 3. Deploy the stack.
 #
-# Portainer passes these as shell env vars to docker compose, so the `$`
-# in bcrypt hashes is not re-interpolated -- no escaping needed.
+# IMPORTANT -- escaping `$` in bcrypt hashes:
+# Portainer writes the env vars to its own .env file, which docker compose
+# parses with full variable substitution. Every `$` in your bcrypt hash
+# must be doubled or compose will silently truncate it. So if the helper
+# CLI gave you:
+#   $2b$12$bmWWO845WFTYVz3mqQkoEumh2fF8fqHjgZrStVH7HARYEnwKOgL9u
+# paste this in Portainer's UI:
+#   $$2b$$12$$bmWWO845WFTYVz3mqQkoEumh2fF8fqHjgZrStVH7HARYEnwKOgL9u
+# After `docker compose up`, `printenv WILDWATCH_WEB_PASSWORD_HASH`
+# inside the container should print the original `$2b$12$...` form.
 #
 # Caddy is intentionally omitted: most Portainer setups already have a
 # reverse proxy in front (Traefik, Nginx Proxy Manager, etc.). Map the
