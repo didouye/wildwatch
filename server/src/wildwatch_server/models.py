@@ -179,6 +179,12 @@ class Camera(SQLModel, table=True):
     last_seen_at: datetime | None = None
     notes: str | None = None
 
+    # V1.2 -- camera control plane
+    desired_config: str | None = Field(default=None)            # JSON
+    last_heartbeat: str | None = Field(default=None)            # JSON
+    agent_last_seen_at: datetime | None = Field(default=None)
+    pending_reorient_delta: int | None = Field(default=None)
+
 
 class CameraEnrollRequest(SQLModel):
     """Body of POST /api/cameras/enroll."""

@@ -1,0 +1,63 @@
+"""Tests for V1.2: schema migration + heartbeat infrastructure."""
+
+from __future__ import annotations
+
+import importlib
+from pathlib import Path
+
+import pytest
+from sqlalchemy import text
+from sqlmodel import SQLModel
+
+from wildwatch_server import db as db_module
+
+
+def _reload_app(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    monkeypatch.setenv("WILDWATCH_API_KEY", "admin-key")
+    monkeypatch.setenv("WILDWATCH_PHOTOS_DIR", str(tmp_path / "photos"))
+    monkeypatch.setenv("WILDWATCH_DB_URL", f"sqlite:///{tmp_path / 'wildwatch.db'}")
+    for var in ("ENROLL", "UPLOAD", "LOGIN", "DEFAULT"):
+        monkeypatch.setenv(f"WILDWATCH_RATE_{var}", "1000/minute")
+    db_module.reset_engine_cache()
+    import wildwatch_server.rate_limit as rl
+    importlib.reload(rl)
+    rl.limiter.reset()
+    import wildwatch_server.routes.cameras as cameras_routes
+    import wildwatch_server.routes.photos as photos_routes
+    importlib.reload(photos_routes)
+    importlib.reload(cameras_routes)
+    import wildwatch_server.main as main_module
+    importlib.reload(main_module)
+    SQLModel.metadata.create_all(db_module.get_engine())
+    return main_module.app, db_module.get_engine()
+
+
+def test_migration_v11_to_v12_idempotent(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _, engine = _reload_app(tmp_path, monkeypatch)
+
+    # Drop the new columns so we simulate a pre-v12 schema.
+    with engine.begin() as conn:
+        for col in (
+            "desired_config",
+            "last_heartbeat",
+            "agent_last_seen_at",
+            "pending_reorient_delta",
+        ):
+            try:
+                conn.execute(text(f"ALTER TABLE cameras DROP COLUMN {col}"))
+            except Exception:
+                pass
+
+    from wildwatch_server.migrations import upgrade_to_v12
+
+    result1 = upgrade_to_v12(engine)
+    result2 = upgrade_to_v12(engine)
+
+    assert result1["columns_added"] == 4
+    assert result2["columns_added"] == 0  # second call is a no-op
+
+    with engine.connect() as conn:
+        cols = {row[1] for row in conn.execute(text("PRAGMA table_info(cameras)")).fetchall()}
+    assert {"desired_config", "last_heartbeat", "agent_last_seen_at", "pending_reorient_delta"} <= cols

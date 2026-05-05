@@ -45,17 +45,22 @@ def init_db() -> None:
     """Create tables if they do not exist, then apply incremental upgrades.
 
     SQLModel.metadata.create_all handles fresh installs (creates every
-    declared table). Existing databases (V0.4 / V1.0) get the missing
-    columns added by the upgrade_to_v05 / upgrade_to_v11 helpers. All
-    paths are idempotent.
+    declared table). Existing databases (V0.4 / V1.0 / V1.1) get the missing
+    columns added by the upgrade_to_v05 / upgrade_to_v11 / upgrade_to_v12
+    helpers. All paths are idempotent.
     """
     engine = get_engine()
     SQLModel.metadata.create_all(engine)
     # Imported here to avoid a circular import (migrations imports db.get_engine).
-    from wildwatch_server.migrations import upgrade_to_v05, upgrade_to_v11
+    from wildwatch_server.migrations import (
+        upgrade_to_v05,
+        upgrade_to_v11,
+        upgrade_to_v12,
+    )
 
     upgrade_to_v05(engine)
     upgrade_to_v11(engine)
+    upgrade_to_v12(engine)
 
 
 def get_session() -> Iterator[Session]:

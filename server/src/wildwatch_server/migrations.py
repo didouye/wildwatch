@@ -179,6 +179,35 @@ def upgrade_to_v11(engine: Engine) -> dict[str, int]:
     return actions
 
 
+def upgrade_to_v12(engine: Engine) -> dict[str, int]:
+    """Idempotently bring the schema from V1.1 to V1.2 (camera control plane).
+
+    Adds 4 nullable columns to the `cameras` table:
+      desired_config, last_heartbeat (TEXT, JSON-serialized),
+      agent_last_seen_at (TIMESTAMP), pending_reorient_delta (INTEGER).
+    """
+    actions = {"columns_added": 0, "tables_created": 0}
+    if not _table_exists(engine, "cameras"):
+        return actions
+
+    cols = _existing_columns(engine, "cameras")
+    spec = [
+        ("desired_config", "TEXT"),
+        ("last_heartbeat", "TEXT"),
+        ("agent_last_seen_at", "TIMESTAMP"),
+        ("pending_reorient_delta", "INTEGER"),
+    ]
+    with engine.begin() as conn:
+        for name, sql_type in spec:
+            if name not in cols:
+                conn.execute(text(f"ALTER TABLE cameras ADD COLUMN {name} {sql_type}"))
+                actions["columns_added"] += 1
+
+    if actions["columns_added"]:
+        log.info("V1.2 migration applied: %s", actions)
+    return actions
+
+
 def main() -> None:
     """CLI entry point: run the upgrade against the configured engine."""
     logging.basicConfig(level=logging.INFO, format="%(message)s")
@@ -187,6 +216,7 @@ def main() -> None:
     init_db()  # ensures all tables exist via create_all first
     upgrade_to_v05(get_engine())
     upgrade_to_v11(get_engine())
+    upgrade_to_v12(get_engine())
 
 
 if __name__ == "__main__":
