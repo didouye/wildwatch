@@ -136,3 +136,15 @@ def test_heartbeat_stores_blob_and_timestamp(client: TestClient) -> None:
         stored = json.loads(row.last_heartbeat)
         assert stored["agent"]["version"] == "1.2.0"
         assert stored["reported_config"]["rotation"] == 0
+
+
+def test_heartbeat_stores_preview_to_disk(client: TestClient, tmp_path: Path) -> None:
+    cam = _enroll(client)
+    _approve(client, cam["id"])
+    fake_jpeg = b"\xff\xd8\xff\xe0" + b"x" * 100
+    res = _heartbeat(client, cam["token"], {"agent": {"version": "1.2.0"}}, preview=fake_jpeg)
+    assert res.status_code == 200, res.text
+
+    from wildwatch_server.storage import previews_dir
+    p = previews_dir() / f"{cam['id']}.jpg"
+    assert p.exists() and p.read_bytes() == fake_jpeg

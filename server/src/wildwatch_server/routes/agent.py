@@ -29,7 +29,7 @@ def _camera_from_authz(session: Session, authorization: str | None) -> Camera:
 
 @router.post("/heartbeat")
 @limiter.limit(HEARTBEAT_LIMIT)
-def heartbeat(
+async def heartbeat(
     request: Request,
     response: Response,
     status: str = Form(...),
@@ -47,4 +47,11 @@ def heartbeat(
     cam.agent_last_seen_at = datetime.now(timezone.utc)
     session.add(cam)
     session.commit()
+
+    if preview is not None:
+        from wildwatch_server.storage import previews_dir
+        contents = await preview.read()
+        if contents:
+            target = previews_dir() / f"{cam.id}.jpg"
+            target.write_bytes(contents)
     return {"desired_config": None, "commands": []}

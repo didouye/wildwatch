@@ -15,3 +15,9 @@ def photos_dir() -> Path:
         path = Path(__file__).resolve().parents[3] / "data" / "photos"
     path.mkdir(parents=True, exist_ok=True)
     return path
+
+
+def previews_dir() -> Path:
+    base = photos_dir().parent / "previews"
+    base.mkdir(parents=True, exist_ok=True)
+    return base
