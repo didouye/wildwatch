@@ -114,9 +114,32 @@ fi
 # ---------- Step 4: enroll with the server ----------
 echo "==> Step 4/6: enrolling this camera with the server"
 HOSTNAME_TAG="$(hostname)"
-ENROLL_RESPONSE="$(curl -fsS -X POST "$SERVER_URL/api/cameras/enroll" \
+
+# Resolve redirects (e.g. Caddy http -> https) so we end up storing the
+# canonical URL in config.toml. This avoids a per-upload redirect roundtrip.
+RESOLVED_URL="$(curl -fsSLo /dev/null -w '%{url_effective}' "$SERVER_URL/health" || true)"
+if [[ -n "$RESOLVED_URL" && "$RESOLVED_URL" == *"/health" ]]; then
+    SERVER_URL="${RESOLVED_URL%/health}"
+    SERVER_URL="${SERVER_URL%/}"
+    echo "    resolved server URL: $SERVER_URL"
+fi
+
+ENROLL_RESPONSE="$(curl -fsSL -X POST "$SERVER_URL/api/cameras/enroll" \
     -H "Content-Type: application/json" \
-    -d "{\"hostname\": \"$HOSTNAME_TAG\"}")"
+    -d "{\"hostname\": \"$HOSTNAME_TAG\"}")" || {
+    echo "error: enrollment request failed (curl exit $?)" >&2
+    echo "       check that $SERVER_URL is reachable and serving WildWatch" >&2
+    exit 1
+}
+
+if ! echo "$ENROLL_RESPONSE" | python3 -c 'import json, sys; json.load(sys.stdin)' 2>/dev/null; then
+    echo "error: server response was not valid JSON. Got:" >&2
+    echo "----- response start -----" >&2
+    echo "$ENROLL_RESPONSE" >&2
+    echo "----- response end -----" >&2
+    exit 1
+fi
+
 CAMERA_TOKEN="$(echo "$ENROLL_RESPONSE" | python3 -c 'import json, sys; print(json.load(sys.stdin)["token"])')"
 CAMERA_ID="$(echo "$ENROLL_RESPONSE" | python3 -c 'import json, sys; print(json.load(sys.stdin)["id"])')"
 echo "    enrolled as camera #$CAMERA_ID (status=pending)"

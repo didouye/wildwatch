@@ -136,6 +136,7 @@ class Uploader:
                 data=data,
                 headers=headers,
                 timeout=self._cfg.request_timeout_seconds,
+                follow_redirects=True,
             )
         response.raise_for_status()
         log.info("Uploaded %s -> %s", photo.name, response.json().get("stored_path"))
