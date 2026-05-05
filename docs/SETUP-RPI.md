@@ -188,7 +188,7 @@ in the repo). At minimum, update `[upload].server_url` with your server IP.
 
 ```toml
 [upload]
-server_url = "http://192.168.0.21:8000"  # dev box / server IP
+server_url = "http://192.168.1.10:8000"  # dev box / server IP
 ```
 
 ## 7. Run it
@@ -227,7 +227,7 @@ Expected logs:
 
 ```
 Config loaded from /home/dietpi/wildwatch/config.toml
-Target server: http://192.168.0.21:8000
+Target server: http://192.168.1.10:8000
 Starting camera
 Monitoring loop started
 ```

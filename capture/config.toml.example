@@ -37,7 +37,7 @@ burst_interval_seconds = 0.5
 
 [upload]
 # WildWatch server URL
-server_url = "http://192.168.0.21:8000"
+server_url = "http://192.168.1.10:8000"
 # API key (empty = no auth, V0.2 dev mode)
 api_key = ""
 # Local queue directories

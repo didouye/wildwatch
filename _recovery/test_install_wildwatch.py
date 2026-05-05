@@ -27,19 +27,19 @@ SPEC.loader.exec_module(INSTALL)
 def test_arp_scan_filters_rpi_ouis() -> None:
     """The ARP parser only keeps MAC addresses matching a RPi OUI."""
     fake_arp_output = (
-        "? (192.168.0.1) at aa:bb:cc:dd:ee:ff on en0 ifscope [ethernet]\n"
-        "? (192.168.0.23) at b8:27:eb:e1:c1:5e on en0 ifscope [ethernet]\n"
-        "? (192.168.0.42) at dc:a6:32:11:22:33 on en0 ifscope [ethernet]\n"
-        "? (192.168.0.99) at 96:0d:a6:34:71:89 on en0 ifscope permanent\n"
+        "? (192.168.1.1) at aa:bb:cc:dd:ee:ff on en0 ifscope [ethernet]\n"
+        "? (192.168.1.23) at b8:27:eb:aa:bb:cc on en0 ifscope [ethernet]\n"
+        "? (192.168.1.42) at dc:a6:32:11:22:33 on en0 ifscope [ethernet]\n"
+        "? (192.168.1.99) at 00:1a:2b:33:44:55 on en0 ifscope permanent\n"
     )
     fake_result = type("R", (), {"returncode": 0, "stdout": fake_arp_output})()
     with patch.object(INSTALL.subprocess, "run", return_value=fake_result):
         rpis = INSTALL._arp_scan_rpis()
     ips = [ip for ip, _ in rpis]
-    assert "192.168.0.23" in ips
-    assert "192.168.0.42" in ips
-    assert "192.168.0.1" not in ips  # non-RPi OUI
-    assert "192.168.0.99" not in ips  # 96:0d... does not match
+    assert "192.168.1.23" in ips
+    assert "192.168.1.42" in ips
+    assert "192.168.1.1" not in ips  # non-RPi OUI
+    assert "192.168.1.99" not in ips  # OUI does not match an RPi prefix
 
 
 def test_arp_scan_returns_empty_on_failure() -> None:
