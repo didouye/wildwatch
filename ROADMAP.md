@@ -175,6 +175,40 @@ Web auth (login/password) and HTTPS termination are deferred to V1.0.
 - [x] Server test suite covers V1.0: 67 tests (auth, rate limit included),
       ruff clean
 
+## V1.2 -- Camera control plane (PR1: observability)
+
+- [x] Idempotent migration `upgrade_to_v12`: 4 nullable columns on
+      `cameras` (`desired_config`, `last_heartbeat`, `agent_last_seen_at`,
+      `pending_reorient_delta`)
+- [x] New `wildwatch-agent` systemd service on the RPi: heartbeat every
+      30s carrying agent meta (version, uptime), system metrics
+      (CPU temp, memory, disk, queue size, load avg), capture state
+      (service_active, last_capture_at, last_detection_at, error_count,
+      reported_config), and a 320x240 grayscale preview JPEG
+- [x] `wildwatch-capture` publishes `/run/wildwatch/{status.json,
+      preview.jpg}` atomically every loop iteration (preview throttled
+      to 5s) -- agent observes it without owning picamera2
+- [x] `POST /api/cameras/agent/heartbeat` (multipart): persists
+      `last_heartbeat` blob + `agent_last_seen_at`, writes preview to
+      `data/previews/{camera_id}.jpg` atomically. Bearer-token auth
+      reuses the existing camera token; rate-limited 120/min
+- [x] `GET /preview/{camera_id}` serves the latest preview thumbnail
+- [x] `/cameras` page enriched: live agent + capture status badges,
+      preview, system metrics, reported config, htmx 5s polling per card
+      (`/cameras/{id}/card` fragment endpoint). Inline rename form and
+      hostname/photo_count/last_seen_at preserved
+- [x] Apply path (write `desired_config` + restart capture) **NOT**
+      wired in PR1 -- the response carries `{"desired_config": null,
+      "commands": []}`; PR2 will plumb the apply logic
+- [x] `_recovery/setup.sh` + `_recovery/install_wildwatch.py` install
+      both services in the right order: tmpfiles.d (`/run/wildwatch`
+      0775 dietpi:dietpi) before either service starts; sudoers entry
+      (allows `systemctl restart/is-active wildwatch-capture` from
+      `dietpi`, prepared for PR2)
+- [x] 142 tests green: server 96 (~12 new), capture 26 (~5 new),
+      agent 9 (all new), `_recovery/test_install_wildwatch.py` 11
+      (~5 new). Ruff clean across all four packages.
+
 ---
 
 ## Future (V2+)
