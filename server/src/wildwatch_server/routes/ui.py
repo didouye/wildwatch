@@ -15,7 +15,7 @@ from sqlmodel import Session, select
 
 from wildwatch_server.auth_web import require_web_session
 from wildwatch_server.db import get_session
-from wildwatch_server.models import Photo, PhotoTagLink, Tag
+from wildwatch_server.models import Camera, Photo, PhotoTagLink, Tag
 from wildwatch_server.routes.photos import _delete_photo_assets, set_photo_tags
 from wildwatch_server.storage import photos_dir
 
@@ -52,6 +52,7 @@ def gallery(
     from_: str | None = Query(default=None, alias="from"),
     to: str | None = Query(default=None),
     hostname: str | None = Query(default=None),
+    camera_id: int | None = Query(default=None),
     favorite: str | None = Query(default=None),
     tag: str | None = Query(default=None),
     session: Session = Depends(get_session),
@@ -74,6 +75,9 @@ def gallery(
     if hostname:
         query = query.where(Photo.hostname == hostname)
         count_query = count_query.where(Photo.hostname == hostname)
+    if camera_id is not None:
+        query = query.where(Photo.camera_id == camera_id)
+        count_query = count_query.where(Photo.camera_id == camera_id)
     if favorite_only:
         query = query.where(Photo.is_favorite.is_(True))
         count_query = count_query.where(Photo.is_favorite.is_(True))
@@ -101,6 +105,9 @@ def gallery(
     all_tags = sorted(
         row[0] for row in session.exec(select(Tag.name).distinct()).all()
     )
+    cameras_for_filter = session.exec(
+        select(Camera).where(Camera.status != "revoked").order_by(Camera.hostname)
+    ).all()
 
     base_qs = {}
     if from_:
@@ -127,10 +134,12 @@ def gallery(
         "next_qs": next_qs,
         "hostnames": hostnames,
         "all_tags": all_tags,
+        "cameras_for_filter": cameras_for_filter,
         "filters": {
             "from_": from_,
             "to": to,
             "hostname": hostname,
+            "camera_id": camera_id,
             "favorite": favorite_only,
             "tag": tag,
         },
@@ -319,6 +328,108 @@ def bulk_action(
 
 
 # ---------- Stats page ----------
+
+
+# ---------- Cameras admin page ----------
+
+
+def _camera_with_count(session: Session, cam: Camera) -> dict:
+    count = int(
+        session.exec(
+            select(func.count()).select_from(Photo).where(Photo.camera_id == cam.id)
+        ).one()
+    )
+    return {"cam": cam, "photo_count": count}
+
+
+@router.get("/cameras", response_class=HTMLResponse)
+def cameras_page(
+    request: Request, session: Session = Depends(get_session)
+) -> HTMLResponse:
+    rows = session.exec(select(Camera).order_by(Camera.enrolled_at.desc())).all()
+    cams = [_camera_with_count(session, c) for c in rows]
+    pending = [c for c in cams if c["cam"].status == "pending"]
+    approved = [c for c in cams if c["cam"].status == "approved"]
+    revoked = [c for c in cams if c["cam"].status == "revoked"]
+    server_url = str(request.base_url).rstrip("/")
+    return templates.TemplateResponse(
+        request=request,
+        name="cameras.html",
+        context={
+            "pending": pending,
+            "approved": approved,
+            "revoked": revoked,
+            "total": len(cams),
+            "server_url": server_url,
+        },
+    )
+
+
+@router.post("/cameras/{camera_id}/approve", response_class=HTMLResponse)
+def approve_camera_ui(
+    camera_id: int,
+    request: Request,
+    session: Session = Depends(get_session),
+) -> HTMLResponse:
+    from datetime import datetime, timezone
+
+    cam = session.get(Camera, camera_id)
+    if cam is None:
+        raise HTTPException(status_code=404)
+    cam.status = "approved"
+    cam.approved_at = datetime.now(timezone.utc)
+    session.add(cam)
+    session.commit()
+    return RedirectResponse(url="/cameras", status_code=302)
+
+
+@router.post("/cameras/{camera_id}/revoke", response_class=HTMLResponse)
+def revoke_camera_ui(
+    camera_id: int,
+    request: Request,
+    session: Session = Depends(get_session),
+) -> HTMLResponse:
+    cam = session.get(Camera, camera_id)
+    if cam is None:
+        raise HTTPException(status_code=404)
+    cam.status = "revoked"
+    session.add(cam)
+    session.commit()
+    return RedirectResponse(url="/cameras", status_code=302)
+
+
+@router.post("/cameras/{camera_id}/rename", response_class=HTMLResponse)
+def rename_camera_ui(
+    camera_id: int,
+    request: Request,
+    display_name: str = Form(default=""),
+    session: Session = Depends(get_session),
+) -> HTMLResponse:
+    cam = session.get(Camera, camera_id)
+    if cam is None:
+        raise HTTPException(status_code=404)
+    cam.display_name = display_name.strip() or None
+    session.add(cam)
+    session.commit()
+    return RedirectResponse(url="/cameras", status_code=302)
+
+
+@router.post("/cameras/{camera_id}/delete", response_class=HTMLResponse)
+def delete_camera_ui(
+    camera_id: int,
+    request: Request,
+    session: Session = Depends(get_session),
+) -> HTMLResponse:
+    cam = session.get(Camera, camera_id)
+    if cam is None:
+        raise HTTPException(status_code=404)
+    photos = session.exec(select(Photo).where(Photo.camera_id == camera_id)).all()
+    for p in photos:
+        p.camera_id = None
+        session.add(p)
+    session.delete(cam)
+    session.commit()
+    return RedirectResponse(url="/cameras", status_code=302)
 
 
 @router.get("/stats", response_class=HTMLResponse)

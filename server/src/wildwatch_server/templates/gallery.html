@@ -26,6 +26,15 @@
       <input type="date" name="to" value="{{ filters.to or '' }}" class="rounded bg-slate-900 border border-slate-700 px-2 py-1 text-slate-100">
     </label>
     <label class="flex flex-col text-sm">
+      <span class="text-slate-300 mb-1">Camera</span>
+      <select name="camera_id" class="rounded bg-slate-900 border border-slate-700 px-2 py-1 text-slate-100">
+        <option value="">Any</option>
+        {% for cam in cameras_for_filter %}
+          <option value="{{ cam.id }}" {% if filters.camera_id == cam.id %}selected{% endif %}>{{ cam.display_name or cam.hostname }}</option>
+        {% endfor %}
+      </select>
+    </label>
+    <label class="flex flex-col text-sm">
       <span class="text-slate-300 mb-1">Hostname</span>
       <select name="hostname" class="rounded bg-slate-900 border border-slate-700 px-2 py-1 text-slate-100">
         <option value="">Any</option>

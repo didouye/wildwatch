@@ -68,6 +68,11 @@ class Photo(SQLModel, table=True):
     is_favorite: bool = Field(default=False, index=True)
     share_token: str | None = Field(default=None, unique=True, index=True)
 
+    # V1.1 -- multi-camera
+    camera_id: int | None = Field(
+        default=None, foreign_key="cameras.id", ondelete="SET NULL", index=True
+    )
+
     tags: list["Tag"] = Relationship(back_populates="photos", link_model=PhotoTagLink)
 
 
@@ -149,3 +154,76 @@ class BulkDeleteRequest(SQLModel):
 class BulkDeleteResponse(SQLModel):
     deleted: int
     not_found: int
+
+
+# ---------- V1.1 multi-camera ----------
+
+
+class Camera(SQLModel, table=True):
+    """One row per RPi enrolled with the server.
+
+    Workflow: a fresh RPi POSTs to /api/cameras/enroll which creates a row
+    with status='pending' and returns the token. The operator approves the
+    row from the web UI; only then are uploads accepted.
+    """
+
+    __tablename__ = "cameras"
+
+    id: int | None = Field(default=None, primary_key=True)
+    token: str = Field(unique=True, index=True)
+    hostname: str
+    display_name: str | None = None
+    status: str = Field(default="pending", index=True)  # pending | approved | revoked
+    enrolled_at: datetime = Field(default_factory=utcnow)
+    approved_at: datetime | None = None
+    last_seen_at: datetime | None = None
+    notes: str | None = None
+
+
+class CameraEnrollRequest(SQLModel):
+    """Body of POST /api/cameras/enroll."""
+
+    hostname: str
+    system: dict | None = None  # informational, stored as `notes` JSON-encoded
+
+
+class CameraEnrollResponse(SQLModel):
+    """Returned to the RPi after an enrollment request."""
+
+    id: int
+    token: str
+    status: str
+    hostname: str
+    display_name: str | None = None
+    enrolled_at: datetime
+
+
+class CameraRead(SQLModel):
+    """Admin-facing camera row (no token leaked)."""
+
+    id: int
+    hostname: str
+    display_name: str | None = None
+    status: str
+    enrolled_at: datetime
+    approved_at: datetime | None = None
+    last_seen_at: datetime | None = None
+    notes: str | None = None
+    photo_count: int = 0
+
+
+class CameraSelfRead(SQLModel):
+    """Returned by /api/cameras/me to the RPi (just enough to know status)."""
+
+    id: int
+    hostname: str
+    display_name: str | None = None
+    status: str
+
+
+class CameraUpdate(SQLModel):
+    """Body of PATCH /api/cameras/{id}."""
+
+    status: str | None = None  # approved | revoked
+    display_name: str | None = None
+    notes: str | None = None

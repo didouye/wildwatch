@@ -7,12 +7,15 @@ from datetime import date, datetime, timezone
 from pathlib import Path
 from typing import Literal
 
+import os
+
 from fastapi import (
     APIRouter,
     BackgroundTasks,
     Depends,
     File,
     Form,
+    Header,
     HTTPException,
     Query,
     Request,
@@ -28,6 +31,7 @@ from wildwatch_server.db import get_session
 from wildwatch_server.models import (
     BulkDeleteRequest,
     BulkDeleteResponse,
+    Camera,
     Photo,
     PhotoListResponse,
     PhotoRead,
@@ -39,7 +43,39 @@ from wildwatch_server.rate_limit import UPLOAD_LIMIT, limiter
 from wildwatch_server.storage import photos_dir
 from wildwatch_server.thumbnails import THUMBNAIL_SIZES, generate_all, thumbnail_path
 
-router = APIRouter(prefix="/api/photos", dependencies=[Depends(require_api_key)])
+# We do NOT mount require_api_key on the whole router any more: POST /api/photos
+# supports two auth modes (camera token or admin key), and we want each
+# admin route to declare its dependency explicitly.
+router = APIRouter(prefix="/api/photos")
+
+
+def _photo_upload_auth(
+    authorization: str | None = Header(default=None),
+    session: Session = Depends(get_session),
+) -> Camera | None:
+    """Authenticate POST /api/photos.
+
+    Returns the matching Camera (if a camera token was used and it is
+    approved) or None (if WILDWATCH_API_KEY was used). Raises 401 / 403
+    in every other case.
+    """
+    if not authorization or not authorization.lower().startswith("bearer "):
+        raise HTTPException(status_code=401, detail="Missing Bearer token")
+    token = authorization.split(" ", 1)[1].strip()
+
+    admin_key = os.environ.get("WILDWATCH_API_KEY") or None
+    if admin_key and token == admin_key:
+        return None
+
+    camera = session.exec(select(Camera).where(Camera.token == token)).first()
+    if camera is None:
+        raise HTTPException(status_code=401, detail="Invalid token")
+    if camera.status != "approved":
+        raise HTTPException(
+            status_code=403,
+            detail=f"Camera is {camera.status}; waiting for admin approval",
+        )
+    return camera
 
 
 def _photo_from_metadata(
@@ -121,6 +157,7 @@ async def upload_photo(
     captured_at: str | None = Form(default=None),
     metadata: str | None = Form(default=None),
     session: Session = Depends(get_session),
+    camera: Camera | None = Depends(_photo_upload_auth),
 ) -> dict:
     if file.content_type not in {"image/jpeg", "image/png"}:
         raise HTTPException(
@@ -162,6 +199,13 @@ async def upload_photo(
         metadata=parsed_meta,
     )
     photo.received_at = now
+    if camera is not None:
+        photo.camera_id = camera.id
+        # Override hostname from the camera record so the gallery filter and
+        # the metadata panel always reflect the operator-managed name.
+        photo.hostname = camera.hostname
+        camera.last_seen_at = now
+        session.add(camera)
     session.add(photo)
     session.commit()
     session.refresh(photo)
@@ -191,7 +235,7 @@ def _parse_date_param(value: str | None, name: str) -> date | None:
         ) from exc
 
 
-@router.get("", response_model=PhotoListResponse)
+@router.get("", response_model=PhotoListResponse, dependencies=[Depends(require_api_key)])
 def list_photos(
     limit: int = Query(default=50, ge=1, le=200),
     offset: int = Query(default=0, ge=0),
@@ -200,6 +244,7 @@ def list_photos(
     hostname: str | None = Query(default=None),
     favorite: bool | None = Query(default=None),
     tag: str | None = Query(default=None),
+    camera_id: int | None = Query(default=None),
     order: Literal["captured_at_desc", "captured_at_asc"] = Query(
         default="captured_at_desc"
     ),
@@ -221,6 +266,9 @@ def list_photos(
     if hostname:
         query = query.where(Photo.hostname == hostname)
         count_query = count_query.where(Photo.hostname == hostname)
+    if camera_id is not None:
+        query = query.where(Photo.camera_id == camera_id)
+        count_query = count_query.where(Photo.camera_id == camera_id)
     if favorite:
         query = query.where(Photo.is_favorite.is_(True))
         count_query = count_query.where(Photo.is_favorite.is_(True))
@@ -255,7 +303,7 @@ def list_photos(
 # ---------- Detail / download / delete ----------
 
 
-@router.get("/{photo_id}", response_model=PhotoRead)
+@router.get("/{photo_id}", response_model=PhotoRead, dependencies=[Depends(require_api_key)])
 def get_photo(photo_id: int, session: Session = Depends(get_session)) -> PhotoRead:
     photo = session.get(Photo, photo_id)
     if photo is None:
@@ -263,7 +311,7 @@ def get_photo(photo_id: int, session: Session = Depends(get_session)) -> PhotoRe
     return _photo_to_read(photo)
 
 
-@router.get("/{photo_id}/file")
+@router.get("/{photo_id}/file", dependencies=[Depends(require_api_key)])
 def download_photo(photo_id: int, session: Session = Depends(get_session)) -> FileResponse:
     photo = session.get(Photo, photo_id)
     if photo is None:
@@ -282,7 +330,7 @@ def _delete_photo_assets(photo: Photo) -> None:
         thumbnail_path(photo.file_path, size).unlink(missing_ok=True)
 
 
-@router.delete("/{photo_id}")
+@router.delete("/{photo_id}", dependencies=[Depends(require_api_key)])
 def delete_photo(photo_id: int, session: Session = Depends(get_session)) -> dict:
     photo = session.get(Photo, photo_id)
     if photo is None:
@@ -296,7 +344,7 @@ def delete_photo(photo_id: int, session: Session = Depends(get_session)) -> dict
 # ---------- PATCH ----------
 
 
-@router.patch("/{photo_id}", response_model=PhotoRead)
+@router.patch("/{photo_id}", response_model=PhotoRead, dependencies=[Depends(require_api_key)])
 def patch_photo(
     photo_id: int,
     payload: PhotoUpdate,
@@ -320,7 +368,7 @@ def patch_photo(
 # ---------- Bulk delete ----------
 
 
-@router.post("/bulk-delete", response_model=BulkDeleteResponse)
+@router.post("/bulk-delete", response_model=BulkDeleteResponse, dependencies=[Depends(require_api_key)])
 def bulk_delete(
     payload: BulkDeleteRequest, session: Session = Depends(get_session)
 ) -> BulkDeleteResponse:

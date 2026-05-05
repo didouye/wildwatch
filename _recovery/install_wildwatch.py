@@ -4,6 +4,7 @@
 # dependencies = [
 #     "rich>=13.7",
 #     "questionary>=2.0",
+#     "httpx>=0.27",
 # ]
 # ///
 """WildWatch deployment orchestrator.
@@ -224,11 +225,40 @@ def local_ip_guess() -> str:
         return "127.0.0.1"
 
 
-def decide_server(state: TargetState) -> tuple[str, str, bool]:
+def enroll_with_server(server_url: str, hostname: str) -> str:
+    """Call POST /api/cameras/enroll on the server, return the camera token.
+
+    The camera lands in `pending` status. The operator must approve it
+    from the /cameras page before uploads start.
+    """
+    import httpx
+
+    console.log(f"[bold]>[/bold] Enrolling camera with {server_url}...")
+    url = f"{server_url.rstrip('/')}/api/cameras/enroll"
+    res = httpx.post(url, json={"hostname": hostname}, timeout=30.0)
+    res.raise_for_status()
+    body = res.json()
+    console.log(
+        f"[green]ok[/green] enrolled as camera #{body['id']} "
+        f"(status={body['status']})"
+    )
+    return body["token"]
+
+
+def decide_server(
+    state: TargetState, host: str, server_arg: str | None
+) -> tuple[str, str, bool]:
     """Return (server_url, api_key, server_local).
 
-    If state.config_exists, reuse the existing values. Otherwise, prompt.
+    Order of precedence:
+    1. `--server` flag: enroll the RPi against that URL.
+    2. Existing config on the RPi: reuse it as-is.
+    3. Interactive prompt (legacy V0.5 path).
     """
+    if server_arg:
+        token = enroll_with_server(server_arg, hostname=host)
+        return server_arg, token, False
+
     if state.config_exists and state.server_url and state.api_key:
         console.log("[green]ok[/green] Reusing existing config")
         return state.server_url, state.api_key, False
@@ -240,10 +270,8 @@ def decide_server(state: TargetState) -> tuple[str, str, bool]:
             "Server URL (e.g. http://192.168.1.10:8000):",
             validate=lambda v: v.startswith("http") or "Invalid URL",
         ).ask()
-        key = questionary.text(
-            "Existing API key:", validate=lambda v: bool(v) or "Empty"
-        ).ask()
-        return url, key, False
+        token = enroll_with_server(url, hostname=host)
+        return url, token, False
 
     # Local server setup
     api_key = secrets.token_urlsafe(32)
@@ -426,6 +454,19 @@ def restart_and_verify(host: str) -> None:
 
 
 def main() -> None:
+    import argparse
+
+    parser = argparse.ArgumentParser(
+        description="WildWatch installer for a remote Raspberry Pi"
+    )
+    parser.add_argument(
+        "--server",
+        help="Public URL of the WildWatch server. When provided, the RPi is "
+        "enrolled against it automatically; otherwise the script falls back "
+        "to the legacy interactive flow.",
+    )
+    args = parser.parse_args()
+
     if not SETUP_RPI_SCRIPT.exists() or not INSTALL_SYSTEMD_SCRIPT.exists():
         console.print(
             "[red]x Run this script from the repo root "
@@ -450,7 +491,7 @@ def main() -> None:
     assert_ssh_ok(host)
 
     state = inspect_target(host)
-    server_url, api_key, server_local = decide_server(state)
+    server_url, api_key, server_local = decide_server(state, host, args.server)
 
     # Probe gpu_mem_1024 before/after to know whether a reboot is needed.
     pre = ssh_run(
@@ -473,6 +514,12 @@ def main() -> None:
     summary.append("ok wildwatch-capture is active on ", style="bold green")
     summary.append(host, style="bold")
     summary.append("\n\n")
+    if args.server:
+        summary.append(
+            f"The camera is now PENDING. Approve it at "
+            f"{args.server}/cameras to start uploads.\n\n",
+            style="bold yellow",
+        )
     summary.append("Live logs:\n", style="bold")
     summary.append(f"  ssh {SSH_USER}@{host} 'sudo journalctl -u wildwatch-capture -f'\n")
     summary.append("\nRestart the service:\n", style="bold")

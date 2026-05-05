@@ -25,6 +25,7 @@ def _env_limit(var: str, default: str) -> str:
 DEFAULT_LIMIT = _env_limit("WILDWATCH_RATE_DEFAULT", "200/minute")
 LOGIN_LIMIT = _env_limit("WILDWATCH_RATE_LOGIN", "5/minute")
 UPLOAD_LIMIT = _env_limit("WILDWATCH_RATE_UPLOAD", "30/minute")
+ENROLL_LIMIT = _env_limit("WILDWATCH_RATE_ENROLL", "10/hour")
 
 
 limiter = Limiter(

@@ -17,9 +17,15 @@ log = logging.getLogger(__name__)
 
 
 class Uploader:
-    """HTTP statuses considered transient: keep the photo queued for retry."""
+    """HTTP statuses considered transient: keep the photo queued for retry.
 
-    TRANSIENT_STATUS = {408, 425, 429, 500, 502, 503, 504}
+    403 is also treated as transient because the server returns it while a
+    camera is enrolled but not yet approved by the admin. We keep the photo
+    in the queue and let the operator approve the camera; uploads resume
+    automatically on the next flush.
+    """
+
+    TRANSIENT_STATUS = {403, 408, 425, 429, 500, 502, 503, 504}
 
     def __init__(self, config: UploadConfig) -> None:
         self._cfg = config

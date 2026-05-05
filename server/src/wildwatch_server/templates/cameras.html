@@ -1,0 +1,175 @@
+{% extends "base.html" %}
+
+{% block title %}WildWatch -- Cameras{% endblock %}
+
+{% block content %}
+<section class="space-y-6">
+  <header class="flex items-baseline justify-between">
+    <h1 class="text-2xl font-semibold">Cameras</h1>
+    <div class="flex items-center gap-3">
+      <p class="text-sm text-slate-400">
+        {{ approved|length }} approved &middot; {{ pending|length }} pending &middot; {{ revoked|length }} revoked
+      </p>
+      <button
+        type="button"
+        onclick="document.getElementById('add-camera-modal').classList.remove('hidden')"
+        class="rounded bg-emerald-600 hover:bg-emerald-500 px-3 py-1.5 text-sm font-medium"
+      >+ Add a camera</button>
+    </div>
+  </header>
+
+  {# ---------- Pending approvals ---------- #}
+  {% if pending %}
+    <section class="space-y-2">
+      <h2 class="text-sm font-semibold uppercase tracking-wider text-amber-300">
+        Pending approval ({{ pending|length }})
+      </h2>
+      <ul class="space-y-2">
+        {% for row in pending %}
+          {% set cam = row.cam %}
+          <li class="flex items-center justify-between rounded-lg bg-slate-800 border border-amber-500/40 p-3">
+            <div>
+              <p class="font-medium">{{ cam.display_name or cam.hostname }}</p>
+              <p class="text-xs text-slate-400">
+                hostname: <code>{{ cam.hostname }}</code> &middot;
+                enrolled {{ cam.enrolled_at.strftime('%Y-%m-%d %H:%M') }} UTC
+              </p>
+            </div>
+            <div class="flex gap-2">
+              <form method="post" action="/cameras/{{ cam.id }}/approve">
+                <button class="rounded bg-emerald-600 hover:bg-emerald-500 px-3 py-1 text-sm font-medium">Approve</button>
+              </form>
+              <form method="post" action="/cameras/{{ cam.id }}/revoke">
+                <button class="rounded bg-rose-700 hover:bg-rose-600 px-3 py-1 text-sm font-medium">Reject</button>
+              </form>
+            </div>
+          </li>
+        {% endfor %}
+      </ul>
+    </section>
+  {% endif %}
+
+  {# ---------- Approved ---------- #}
+  <section class="space-y-2">
+    <h2 class="text-sm font-semibold uppercase tracking-wider text-emerald-300">
+      Approved ({{ approved|length }})
+    </h2>
+    {% if approved %}
+      <ul class="space-y-2">
+        {% for row in approved %}
+          {% set cam = row.cam %}
+          <li class="rounded-lg bg-slate-800 border border-slate-700 p-3 space-y-2">
+            <div class="flex items-baseline justify-between gap-3">
+              <form method="post" action="/cameras/{{ cam.id }}/rename" class="flex items-center gap-2 grow">
+                <input
+                  type="text"
+                  name="display_name"
+                  value="{{ cam.display_name or '' }}"
+                  placeholder="{{ cam.hostname }}"
+                  class="bg-transparent border-b border-slate-700 hover:border-emerald-500 focus:border-emerald-500 outline-none px-1 py-0.5 text-base font-medium text-slate-100 grow"
+                >
+                <button class="text-xs text-slate-400 hover:text-slate-200">Save</button>
+              </form>
+              <a
+                href="/gallery?camera_id={{ cam.id }}"
+                class="text-xs text-emerald-300 hover:text-emerald-200"
+              >See photos &rarr;</a>
+            </div>
+            <p class="text-xs text-slate-400 flex flex-wrap gap-x-3">
+              <span>hostname: <code>{{ cam.hostname }}</code></span>
+              <span>{{ row.photo_count }} photo{{ '' if row.photo_count == 1 else 's' }}</span>
+              {% if cam.last_seen_at %}
+                <span>last seen {{ cam.last_seen_at.strftime('%Y-%m-%d %H:%M') }} UTC</span>
+              {% endif %}
+              {% if cam.approved_at %}
+                <span>approved {{ cam.approved_at.strftime('%Y-%m-%d') }}</span>
+              {% endif %}
+            </p>
+            <div class="flex gap-2">
+              <form method="post" action="/cameras/{{ cam.id }}/revoke" onsubmit="return confirm('Revoke this camera? Its existing photos stay.');">
+                <button class="text-xs text-rose-400 hover:text-rose-300">Revoke</button>
+              </form>
+            </div>
+          </li>
+        {% endfor %}
+      </ul>
+    {% else %}
+      <p class="text-sm text-slate-500">No camera enrolled yet. Click <em>Add a camera</em> above.</p>
+    {% endif %}
+  </section>
+
+  {# ---------- Revoked ---------- #}
+  {% if revoked %}
+    <details class="rounded-lg bg-slate-800/60 border border-slate-700/60">
+      <summary class="cursor-pointer px-3 py-2 text-sm font-semibold uppercase tracking-wider text-slate-400">
+        Revoked ({{ revoked|length }})
+      </summary>
+      <ul class="px-3 pb-3 space-y-2">
+        {% for row in revoked %}
+          {% set cam = row.cam %}
+          <li class="flex items-center justify-between text-sm text-slate-400">
+            <div>
+              <span class="font-medium">{{ cam.display_name or cam.hostname }}</span>
+              <span class="ml-2">{{ row.photo_count }} photo{{ '' if row.photo_count == 1 else 's' }}</span>
+            </div>
+            <div class="flex gap-3">
+              <form method="post" action="/cameras/{{ cam.id }}/approve">
+                <button class="text-xs text-emerald-400 hover:text-emerald-300">Re-approve</button>
+              </form>
+              <form method="post" action="/cameras/{{ cam.id }}/delete" onsubmit="return confirm('Permanently delete this camera? Photos will be kept but orphaned.');">
+                <button class="text-xs text-rose-500 hover:text-rose-400">Hard delete</button>
+              </form>
+            </div>
+          </li>
+        {% endfor %}
+      </ul>
+    </details>
+  {% endif %}
+</section>
+
+{# ---------- Add a camera modal ---------- #}
+<div
+  id="add-camera-modal"
+  class="hidden fixed inset-0 z-50 bg-slate-900/80 backdrop-blur p-4 flex items-center justify-center"
+  onclick="if(event.target === this) this.classList.add('hidden')"
+>
+  <div class="w-full max-w-2xl rounded-lg bg-slate-800 border border-slate-700 p-6 space-y-4 max-h-[90vh] overflow-y-auto">
+    <header class="flex items-baseline justify-between">
+      <h2 class="text-xl font-semibold">Add a camera</h2>
+      <button
+        onclick="document.getElementById('add-camera-modal').classList.add('hidden')"
+        class="text-slate-400 hover:text-slate-200 text-2xl leading-none"
+      >&times;</button>
+    </header>
+
+    <p class="text-sm text-slate-400">
+      Both methods enroll the RPi automatically. After it shows up in the
+      <em>Pending approval</em> list above, click Approve and uploads start.
+    </p>
+
+    <div class="space-y-3">
+      <details open class="rounded border border-slate-700">
+        <summary class="cursor-pointer px-3 py-2 font-medium bg-slate-900/50">From your computer (with SSH access)</summary>
+        <div class="p-3 space-y-2 text-sm">
+          <p class="text-slate-300">
+            Run this on your laptop. The script discovers the RPi on your
+            network, copies the code over SSH, runs the system setup, and
+            calls the enrollment endpoint:
+          </p>
+          <pre class="rounded bg-slate-950 border border-slate-700 p-2 text-xs overflow-x-auto"><code>uv run https://raw.githubusercontent.com/didouye/wildwatch/main/_recovery/install_wildwatch.py \
+  --server {{ server_url }}</code></pre>
+        </div>
+      </details>
+
+      <details class="rounded border border-slate-700">
+        <summary class="cursor-pointer px-3 py-2 font-medium bg-slate-900/50">From the RPi (one-line SSH install)</summary>
+        <div class="p-3 space-y-2 text-sm">
+          <p class="text-slate-300">SSH into the RPi as <code>dietpi</code> and run:</p>
+          <pre class="rounded bg-slate-950 border border-slate-700 p-2 text-xs overflow-x-auto"><code>curl -fsSL https://raw.githubusercontent.com/didouye/wildwatch/main/_recovery/setup.sh \
+  | bash -s -- --server {{ server_url }}</code></pre>
+        </div>
+      </details>
+    </div>
+  </div>
+</div>
+{% endblock %}

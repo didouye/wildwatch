@@ -23,6 +23,9 @@ def _reload_app(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, *, with_auth: b
     monkeypatch.setenv("WILDWATCH_DB_URL", f"sqlite:///{tmp_path / 'wildwatch.db'}")
     db_module.reset_engine_cache()
     # Wipe module-level state from previous tests (engine, app already mounted, ...)
+    import wildwatch_server.rate_limit as rl
+
+    rl.limiter.reset()
     import wildwatch_server.main as main_module
 
     importlib.reload(main_module)
@@ -116,10 +119,11 @@ def test_upload_inserts_into_db(client: TestClient, tmp_path: Path) -> None:
     assert saved["sensor_model"] == "imx708_noir"
 
 
-def test_upload_rejects_invalid_content_type(client_no_auth: TestClient) -> None:
-    response = client_no_auth.post(
+def test_upload_rejects_invalid_content_type(client: TestClient) -> None:
+    response = client.post(
         "/api/photos",
         files={"file": ("evil.exe", b"MZ", "application/octet-stream")},
+        headers={"Authorization": "Bearer secret-key-123"},
     )
     assert response.status_code == 415
 

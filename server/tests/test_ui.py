@@ -20,6 +20,9 @@ def _reload_app(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     monkeypatch.setenv("WILDWATCH_PHOTOS_DIR", str(tmp_path / "photos"))
     monkeypatch.setenv("WILDWATCH_DB_URL", f"sqlite:///{tmp_path / 'wildwatch.db'}")
     db_module.reset_engine_cache()
+    import wildwatch_server.rate_limit as rl
+
+    rl.limiter.reset()
     import wildwatch_server.main as main_module
 
     importlib.reload(main_module)

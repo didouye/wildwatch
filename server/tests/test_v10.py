@@ -44,6 +44,7 @@ def _reload_app(
     import wildwatch_server.rate_limit as rl
 
     importlib.reload(rl)
+    rl.limiter.reset()
     import wildwatch_server.routes.auth as auth_routes
     import wildwatch_server.routes.photos as photos_routes
 

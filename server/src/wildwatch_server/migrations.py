@@ -115,6 +115,70 @@ def upgrade_to_v05(engine: Engine) -> dict[str, int]:
     return actions
 
 
+def upgrade_to_v11(engine: Engine) -> dict[str, int]:
+    """Idempotently bring the schema from V1.0 to V1.1 (multi-camera).
+
+    Adds the `cameras` table and the `camera_id` column on `photos`.
+    """
+    actions = {"columns_added": 0, "tables_created": 0}
+
+    if not _table_exists(engine, "photos"):
+        return actions
+
+    with engine.begin() as conn:
+        if not _table_exists(engine, "cameras"):
+            conn.execute(
+                text(
+                    """
+                    CREATE TABLE cameras (
+                        id           INTEGER PRIMARY KEY AUTOINCREMENT,
+                        token        TEXT NOT NULL UNIQUE,
+                        hostname     TEXT NOT NULL,
+                        display_name TEXT,
+                        status       TEXT NOT NULL DEFAULT 'pending',
+                        enrolled_at  TIMESTAMP NOT NULL,
+                        approved_at  TIMESTAMP,
+                        last_seen_at TIMESTAMP,
+                        notes        TEXT
+                    )
+                    """
+                )
+            )
+            conn.execute(
+                text(
+                    "CREATE INDEX IF NOT EXISTS "
+                    "ix_cameras_token ON cameras(token)"
+                )
+            )
+            conn.execute(
+                text(
+                    "CREATE INDEX IF NOT EXISTS "
+                    "ix_cameras_status ON cameras(status)"
+                )
+            )
+            actions["tables_created"] += 1
+
+        photo_cols = _existing_columns(engine, "photos")
+        if "camera_id" not in photo_cols:
+            conn.execute(
+                text(
+                    "ALTER TABLE photos ADD COLUMN camera_id INTEGER "
+                    "REFERENCES cameras(id) ON DELETE SET NULL"
+                )
+            )
+            conn.execute(
+                text(
+                    "CREATE INDEX IF NOT EXISTS "
+                    "ix_photos_camera_id ON photos(camera_id)"
+                )
+            )
+            actions["columns_added"] += 1
+
+    if actions["columns_added"] or actions["tables_created"]:
+        log.info("V1.1 migration applied: %s", actions)
+    return actions
+
+
 def main() -> None:
     """CLI entry point: run the upgrade against the configured engine."""
     logging.basicConfig(level=logging.INFO, format="%(message)s")
@@ -122,6 +186,7 @@ def main() -> None:
 
     init_db()  # ensures all tables exist via create_all first
     upgrade_to_v05(get_engine())
+    upgrade_to_v11(get_engine())
 
 
 if __name__ == "__main__":

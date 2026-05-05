@@ -125,6 +125,33 @@ Web auth (login/password) and HTTPS termination are deferred to V1.0.
       that brings a V0.4 SQLite DB up to V0.5 idempotently
 - [x] 57 server tests green (V0.4 carried over + 17 new V0.5 tests)
 
+## V1.1 -- Multi-camera management
+
+- [x] `cameras` table (token, hostname, display_name, status, timestamps,
+      notes); `photos.camera_id` foreign key with `ON DELETE SET NULL`
+- [x] Idempotent migration `upgrade_to_v11` (V1.0 SQLite -> V1.1)
+- [x] Open enrollment with admin approval: `POST /api/cameras/enroll`
+      (rate-limited 10/hour by default), `GET /api/cameras/me`,
+      `PATCH /api/cameras/{id}`, `DELETE /api/cameras/{id}` (orphans
+      photos via `camera_id=NULL`)
+- [x] Dual-auth on `POST /api/photos`: camera token (RPi) or
+      `WILDWATCH_API_KEY` (legacy/admin); pending/revoked -> 403
+- [x] Gallery / list filter `?camera_id=N`; gallery dropdown driven by
+      cameras
+- [x] `/cameras` UI page with pending approvals, approved cameras
+      (rename inline, see photos, revoke), revoked (re-approve or hard
+      delete), and a modal with two enrollment one-liners (uv run /
+      curl|bash)
+- [x] Capture client treats 403 as transient (queue preserved while
+      waiting for approval)
+- [x] `_recovery/install_wildwatch.py --server URL` (auto-enroll instead
+      of the V0.5 interactive flow)
+- [x] `_recovery/setup.sh` -- single-line `curl|bash` installer that
+      runs the system setup, enrolls the camera, writes config.toml,
+      and starts the systemd service (with one-shot resume after the
+      gpu_mem reboot)
+- [x] 17 new server tests; 84 total green
+
 ## V1.0 -- Production deployment
 
 - [x] Multi-stage `Dockerfile` (uv builder + slim runtime, non-root user,
