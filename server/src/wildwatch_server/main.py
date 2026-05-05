@@ -10,6 +10,7 @@ from wildwatch_server.db import init_db
 from wildwatch_server.rate_limit import limiter, rate_limit_handler
 from wildwatch_server.routes import (
     admin,
+    agent,
     auth,
     cameras,
     health,
@@ -50,6 +51,7 @@ def create_app() -> FastAPI:
     app.include_router(share.router)
     app.include_router(cameras.public_router)
     app.include_router(cameras.admin_router)
+    app.include_router(agent.router)
     app.include_router(ui.router)
     return app
 

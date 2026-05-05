@@ -61,3 +61,48 @@ def test_migration_v11_to_v12_idempotent(
     with engine.connect() as conn:
         cols = {row[1] for row in conn.execute(text("PRAGMA table_info(cameras)")).fetchall()}
     assert {"desired_config", "last_heartbeat", "agent_last_seen_at", "pending_reorient_delta"} <= cols
+
+
+import json
+from fastapi.testclient import TestClient
+
+
+@pytest.fixture
+def client(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    app, _ = _reload_app(tmp_path, monkeypatch)
+    return TestClient(app)
+
+
+def _enroll(client: TestClient, hostname: str = "rpi") -> dict:
+    return client.post("/api/cameras/enroll", json={"hostname": hostname}).json()
+
+
+def _approve(client: TestClient, camera_id: int) -> None:
+    res = client.patch(
+        f"/api/cameras/{camera_id}",
+        headers={"Authorization": "Bearer admin-key"},
+        json={"status": "approved"},
+    )
+    assert res.status_code == 200
+
+
+def _heartbeat(client: TestClient, token: str, status: dict, preview: bytes | None = None):
+    files: dict = {"status": (None, json.dumps(status))}
+    if preview is not None:
+        files["preview"] = ("preview.jpg", preview, "image/jpeg")
+    return client.post(
+        "/api/cameras/agent/heartbeat",
+        headers={"Authorization": f"Bearer {token}"},
+        files=files,
+    )
+
+
+def test_heartbeat_requires_camera_token(client: TestClient) -> None:
+    res = client.post("/api/cameras/agent/heartbeat", files={"status": (None, "{}")})
+    assert res.status_code == 401
+
+
+def test_heartbeat_returns_403_when_pending(client: TestClient) -> None:
+    cam = _enroll(client)
+    res = _heartbeat(client, cam["token"], {"agent": {"version": "1.2.0"}})
+    assert res.status_code == 403
