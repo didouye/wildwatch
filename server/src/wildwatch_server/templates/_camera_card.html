@@ -46,7 +46,8 @@
     >
     <div class="text-xs text-slate-300 space-y-0.5 grow">
       {% if hb.system %}
-        <div>CPU {{ hb.system.cpu_temp_c }}&deg;C &middot;
+        <div>CPU {{ hb.system.cpu_temp_c }}&deg;C ({{ hb.system.cpu_usage_percent | default('?') }}%) &middot;
+             Load {{ hb.system.load_avg_1min | default('?') }} &middot;
              RAM {{ hb.system.memory_avail_mb }}/{{ hb.system.memory_total_mb }}MB &middot;
              Disk {{ (hb.system.disk_avail_mb / 1024)|round(1) }}GB free</div>
         <div>Queue {{ hb.system.queue_size }} &middot;

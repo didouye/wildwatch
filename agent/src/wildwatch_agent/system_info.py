@@ -57,6 +57,43 @@ def load_avg_1min() -> float | None:
         return None
 
 
+_last_cpu_snapshot: tuple[int, int] | None = None  # (used_jiffies, total_jiffies)
+
+
+def cpu_usage_percent() -> float | None:
+    """Compute CPU usage % since the previous call (delta-based).
+
+    First call returns None (no baseline). Subsequent calls return the
+    average % CPU usage over the interval since the previous call (so
+    at the agent's 30s heartbeat cadence, it's the last 30s average).
+    """
+    global _last_cpu_snapshot
+    try:
+        with open("/proc/stat") as f:
+            line = f.readline().split()
+    except (FileNotFoundError, OSError):
+        return None
+    if not line or line[0] != "cpu":
+        return None
+    try:
+        values = [int(v) for v in line[1:9]]
+    except ValueError:
+        return None
+    idle = values[3] + values[4]  # idle + iowait
+    total = sum(values)
+    used = total - idle
+
+    prev = _last_cpu_snapshot
+    _last_cpu_snapshot = (used, total)
+    if prev is None:
+        return None  # first call, no baseline yet
+    delta_used = used - prev[0]
+    delta_total = total - prev[1]
+    if delta_total == 0:
+        return None
+    return round((delta_used / delta_total) * 100, 1)
+
+
 def queue_size(queue_dir: Path | None) -> int:
     """Count ``.jpg`` files in ``queue_dir``. Returns 0 if missing or None."""
     if queue_dir is None:
@@ -72,6 +109,7 @@ def snapshot(queue_dir: Path | None) -> dict[str, object]:
     avail, total = memory_mb()
     return {
         "cpu_temp_c": cpu_temp_c(),
+        "cpu_usage_percent": cpu_usage_percent(),
         "memory_avail_mb": avail,
         "memory_total_mb": total,
         "load_avg_1min": load_avg_1min(),
