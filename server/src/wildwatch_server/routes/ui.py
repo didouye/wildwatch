@@ -14,6 +14,7 @@ from fastapi.templating import Jinja2Templates
 from sqlalchemy import func
 from sqlmodel import Session, select
 
+from wildwatch_server import reorient as reorient_module
 from wildwatch_server.auth_web import require_web_session
 from wildwatch_server.db import get_session
 from wildwatch_server.models import Camera, Photo, PhotoTagLink, Tag
@@ -390,6 +391,8 @@ def _camera_card_context(cam: Camera, session: Session) -> dict:
             for k, v in desired.items()
         ]
 
+    reorient_progress = reorient_module.reorient_progress.get(cam.id)
+
     return {
         "cam": cam,
         "hb": hb,
@@ -403,6 +406,8 @@ def _camera_card_context(cam: Camera, session: Session) -> dict:
         "desired_config": desired,
         "config_diff": config_diff,
         "apply_error_observed": apply_error,
+        "reorient_pending_delta": cam.pending_reorient_delta,
+        "reorient_progress": reorient_progress,  # tuple (done, total) or None
     }
 
 

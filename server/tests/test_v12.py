@@ -806,3 +806,34 @@ def test_heartbeat_does_not_schedule_reorient_on_apply_error(client: TestClient)
         row = s.get(Camera, cam["id"])
         assert row.desired_config is not None
         assert row.pending_reorient_delta == 180
+
+
+def test_card_shows_reorient_in_progress(client: TestClient) -> None:
+    cam = _enroll(client)
+    _approve(client, cam["id"])
+    # Manually populate the in-memory progress dict.
+    from wildwatch_server import reorient
+    reorient.reorient_progress[cam["id"]] = (12, 50)
+    try:
+        res = client.get(f"/cameras/{cam['id']}/card")
+        assert "Reorienting" in res.text
+        assert "12" in res.text and "50" in res.text
+    finally:
+        reorient.reorient_progress.pop(cam["id"], None)
+
+
+def test_card_shows_reorient_queued_when_pending_no_progress_yet(
+    client: TestClient,
+) -> None:
+    cam = _enroll(client)
+    _approve(client, cam["id"])
+    from wildwatch_server.db import get_engine
+    from sqlmodel import Session as SM
+    with SM(get_engine()) as s:
+        row = s.get(Camera, cam["id"])
+        row.pending_reorient_delta = 90
+        s.commit()
+    res = client.get(f"/cameras/{cam['id']}/card")
+    # Either "queued" or "Reorienting" with 0/?
+    assert "Reorient" in res.text
+    assert "90" in res.text  # delta visible

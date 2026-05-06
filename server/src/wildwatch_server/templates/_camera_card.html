@@ -128,6 +128,18 @@
     {% endif %}
   {% endif %}
 
+  {% if reorient_pending_delta or reorient_progress %}
+    <div class="rounded border border-sky-700 bg-sky-950/40 p-2 text-xs text-sky-200">
+      {% if reorient_progress %}
+        &#x21bb; Reorienting {{ reorient_progress[0] }}/{{ reorient_progress[1] }} photo(s)
+        by {{ reorient_pending_delta or "?" }}&deg;...
+      {% else %}
+        &#x21bb; Reorient queued ({{ reorient_pending_delta }}&deg;) -- will start
+        after the next heartbeat ack.
+      {% endif %}
+    </div>
+  {% endif %}
+
   <div class="flex gap-3 text-xs">
     <a href="/gallery?camera_id={{ cam.id }}" class="text-emerald-300 hover:text-emerald-200">See photos &rarr;</a>
     <button
