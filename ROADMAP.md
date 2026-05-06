@@ -229,6 +229,40 @@ Web auth (login/password) and HTTPS termination are deferred to V1.0.
 - [x] Agent's `pyproject.toml` version bumped from 0.1.0 to 1.2.0 to
       match the server's pin
 
+### V1.2 PR 2: pilotage (push desired_config + agent apply)
+
+- [x] Heartbeat endpoint returns `desired_config` from `Camera.desired_config`
+      and reconciles based on `applied_at`: clears `desired_config` when
+      `reported_config == desired_config`, flags `apply_error_observed=true`
+      when applied but mismatched (truthiness guard against empty-dict
+      vacuous-truth)
+- [x] `POST /cameras/{id}/config`: form-driven (12 fields), validates ranges
+      (rotation in {0,90,180,270}, area/alpha in (0,1], dimensions ≤ 8192,
+      non-negative numeric fields), writes the *minimal diff* vs
+      `reported_config` into `desired_config`. Returns the freshly-rendered
+      card fragment for htmx swap. Fresh-camera (no reported yet) edge case
+      stores all 12 fields.
+- [x] `POST /cameras/{id}/config/cancel`: clears `desired_config` (recovery
+      from apply errors or operator changing their mind)
+- [x] `_edit_settings_modal.html`: per-camera form grouped by section
+      (Orientation / Resolution / Motion detection / Burst), pre-filled
+      from `reported_config` (or `desired_config` if a change is pending),
+      htmx-wired to swap the card fragment on submit
+- [x] Card banners: amber "Update pending" with field-by-field diff arrow
+      + "Cancel" button when `desired_config IS NOT NULL`; red "Last apply
+      failed" when `apply_error_observed=true`
+- [x] `agent/src/wildwatch_agent/apply.py`: in-place TOML merge (preserves
+      comments + ordering of unrelated lines), atomic write
+      (`tmp + os.replace`), calls `sudo /bin/systemctl restart wildwatch-capture`.
+      `[upload]` section structurally unreachable (its keys aren't in
+      `FIELD_TO_SECTION`)
+- [x] Agent `_tick` apply state machine: hash the desired (canonical
+      sha256), apply once per distinct hash, send `applied_at` until
+      server ack's by clearing `desired_config`. Apply failures retry on
+      next tick (operator's escape hatch: Cancel update on the card)
+- [x] 145 tests green: server 116 (~14 new), capture 26 (untouched),
+      agent 19 (~9 new). Ruff clean across all three packages.
+
 ---
 
 ## Future (V2+)
