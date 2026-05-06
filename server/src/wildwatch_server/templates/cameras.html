@@ -63,6 +63,15 @@
           {% endwith %}
         {% endfor %}
       </ul>
+
+      {# Modals live outside the htmx-polled cards so they stay open across swaps. #}
+      {% for ctx in approved %}
+        {% if ctx.agent_status != "current" %}
+          {% with cam=ctx.cam %}
+            {% include "_update_camera_modal.html" %}
+          {% endwith %}
+        {% endif %}
+      {% endfor %}
     {% else %}
       <p class="text-sm text-slate-500">No camera enrolled yet. Click <em>Add a camera</em> above.</p>
     {% endif %}

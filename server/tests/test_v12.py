@@ -275,15 +275,26 @@ def test_card_context_agent_status_outdated(client: TestClient) -> None:
     assert "0.9.0" in res.text and "1.2.0" in res.text
 
 
-def test_card_includes_update_modal_when_outdated(client: TestClient) -> None:
+def test_cameras_page_includes_update_modal_when_outdated(client: TestClient) -> None:
     # Bare hostname (no dot) -- modal appends .local for mDNS.
+    # Modal lives on the full /cameras page (outside the htmx-polled card),
+    # so it survives card swaps without closing if the operator opened it.
     cam = _enroll(client, hostname="dietpi")
     _approve(client, cam["id"])
     _heartbeat(client, cam["token"], {"agent": {"version": "0.9.0", "uptime_s": 1}})
-    res = client.get(f"/cameras/{cam['id']}/card")
-    assert f'id="update-camera-modal-{cam["id"]}"' in res.text
-    assert "raw.githubusercontent.com/didouye/wildwatch/main/_recovery/update.sh" in res.text
-    assert "dietpi@dietpi.local" in res.text
+
+    # Modal is NOT in the polled card fragment anymore (Fix v1.2: htmx UX).
+    card = client.get(f"/cameras/{cam['id']}/card")
+    assert f'id="update-camera-modal-{cam["id"]}"' not in card.text
+    # But the card itself still shows the "Update available" CTA + version numbers.
+    assert "Update available" in card.text
+    assert "0.9.0" in card.text and "1.2.0" in card.text
+
+    # Modal lives on the full /cameras page.
+    page = client.get("/cameras")
+    assert f'id="update-camera-modal-{cam["id"]}"' in page.text
+    assert "raw.githubusercontent.com/didouye/wildwatch/main/_recovery/update.sh" in page.text
+    assert "dietpi@dietpi.local" in page.text
 
 
 def test_update_modal_does_not_double_dot_local_when_hostname_already_qualified(
@@ -293,6 +304,7 @@ def test_update_modal_does_not_double_dot_local_when_hostname_already_qualified(
     cam = _enroll(client, hostname="dietpi.local")
     _approve(client, cam["id"])
     _heartbeat(client, cam["token"], {"agent": {"version": "0.9.0", "uptime_s": 1}})
-    res = client.get(f"/cameras/{cam['id']}/card")
+    # Modal is rendered at the page level, not in the card fragment.
+    res = client.get("/cameras")
     assert "dietpi@dietpi.local" in res.text
     assert "dietpi.local.local" not in res.text  # the bug we are guarding against
