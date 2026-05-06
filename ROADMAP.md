@@ -209,6 +209,26 @@ Web auth (login/password) and HTTPS termination are deferred to V1.0.
       agent 9 (all new), `_recovery/test_install_wildwatch.py` 11
       (~5 new). Ruff clean across all four packages.
 
+### V1.2 PR 1.5: agent version visibility + in-place update flow
+
+- [x] `LATEST_AGENT_VERSION` pin (`server/src/wildwatch_server/versions.py`)
+      bumped manually in lockstep with the agent's `pyproject.toml`
+- [x] Card displays `agent_status`: green checkmark if up to date, amber
+      "Update available" badge with target version if outdated, "Install
+      agent" CTA for cameras with no heartbeat (V1.1 holdovers)
+- [x] Per-card "Update camera" modal (`_update_camera_modal.html`):
+      mirrors the "Add a camera" modal with two tabs (laptop SSH /
+      directly on RPi), copy buttons, server-side substitution of the
+      camera's hostname
+- [x] `_recovery/update.sh`: idempotent in-place update. Pulls latest
+      code into `~/wildwatch-src/`, refreshes both venvs (capture +
+      agent), reinstalls systemd units / tmpfiles.d / sudoers, restarts
+      services. **Preserves `~/wildwatch/config.toml` (camera token +
+      server URL).** Uses `$HOME/.local/bin/uv` explicitly for
+      SSH-curl-bash compat.
+- [x] Agent's `pyproject.toml` version bumped from 0.1.0 to 1.2.0 to
+      match the server's pin
+
 ---
 
 ## Future (V2+)
