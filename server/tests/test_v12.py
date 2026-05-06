@@ -613,3 +613,109 @@ def test_card_shows_apply_error_banner(client: TestClient) -> None:
     res = client.get(f"/cameras/{cam['id']}/card")
     assert "Last apply" in res.text and "fail" in res.text.lower()
     assert "Cancel update" in res.text or "/cancel" in res.text
+
+
+def test_post_config_with_reorient_sets_pending_delta(client: TestClient) -> None:
+    cam = _enroll(client)
+    _approve(client, cam["id"])
+    payload = {
+        "agent": {"version": "1.2.0"},
+        "reported_config": {"rotation": 0, "capture_width": 2304, "capture_height": 1296,
+                            "detection_width": 640, "detection_height": 480,
+                            "pixel_threshold": 25, "area_threshold": 0.02,
+                            "background_alpha": 0.05, "warmup_frames": 30,
+                            "cooldown_seconds": 5.0, "burst_count": 3,
+                            "burst_interval_seconds": 0.5},
+    }
+    _heartbeat(client, cam["token"], payload)
+
+    res = client.post(
+        f"/cameras/{cam['id']}/config",
+        data={"rotation": "180", "capture_width": "2304", "capture_height": "1296",
+              "detection_width": "640", "detection_height": "480",
+              "pixel_threshold": "25", "area_threshold": "0.02",
+              "background_alpha": "0.05", "warmup_frames": "30",
+              "cooldown_seconds": "5.0", "burst_count": "3",
+              "burst_interval_seconds": "0.5",
+              "reorient_existing": "on"},
+    )
+    assert res.status_code == 200
+    from wildwatch_server.db import get_engine
+    from sqlmodel import Session as SM
+    with SM(get_engine()) as s:
+        row = s.get(Camera, cam["id"])
+        # rotation changed 0 -> 180, delta = 180
+        assert row.pending_reorient_delta == 180
+        # And desired_config holds the rotation change (minimal diff)
+        assert json.loads(row.desired_config) == {"rotation": 180}
+
+
+def test_post_config_with_reorient_no_rotation_change_stores_no_delta(
+    client: TestClient,
+) -> None:
+    cam = _enroll(client)
+    _approve(client, cam["id"])
+    payload = {
+        "agent": {"version": "1.2.0"},
+        "reported_config": {"rotation": 90, "capture_width": 2304, "capture_height": 1296,
+                            "detection_width": 640, "detection_height": 480,
+                            "pixel_threshold": 25, "area_threshold": 0.02,
+                            "background_alpha": 0.05, "warmup_frames": 30,
+                            "cooldown_seconds": 5.0, "burst_count": 3,
+                            "burst_interval_seconds": 0.5},
+    }
+    _heartbeat(client, cam["token"], payload)
+
+    # Submit same rotation but with reorient_existing checked. No delta.
+    res = client.post(
+        f"/cameras/{cam['id']}/config",
+        data={"rotation": "90", "capture_width": "1536", "capture_height": "864",
+              "detection_width": "640", "detection_height": "480",
+              "pixel_threshold": "25", "area_threshold": "0.02",
+              "background_alpha": "0.05", "warmup_frames": "30",
+              "cooldown_seconds": "5.0", "burst_count": "3",
+              "burst_interval_seconds": "0.5",
+              "reorient_existing": "on"},
+    )
+    assert res.status_code == 200
+    from wildwatch_server.db import get_engine
+    from sqlmodel import Session as SM
+    with SM(get_engine()) as s:
+        row = s.get(Camera, cam["id"])
+        # capture_width/height changed but rotation stayed -> no delta
+        assert row.pending_reorient_delta is None
+
+
+def test_post_config_without_reorient_flag_skips_delta(client: TestClient) -> None:
+    cam = _enroll(client)
+    _approve(client, cam["id"])
+    payload = {
+        "agent": {"version": "1.2.0"},
+        "reported_config": {"rotation": 0, "capture_width": 2304, "capture_height": 1296,
+                            "detection_width": 640, "detection_height": 480,
+                            "pixel_threshold": 25, "area_threshold": 0.02,
+                            "background_alpha": 0.05, "warmup_frames": 30,
+                            "cooldown_seconds": 5.0, "burst_count": 3,
+                            "burst_interval_seconds": 0.5},
+    }
+    _heartbeat(client, cam["token"], payload)
+
+    # Rotation changes but checkbox NOT checked.
+    res = client.post(
+        f"/cameras/{cam['id']}/config",
+        data={"rotation": "180", "capture_width": "2304", "capture_height": "1296",
+              "detection_width": "640", "detection_height": "480",
+              "pixel_threshold": "25", "area_threshold": "0.02",
+              "background_alpha": "0.05", "warmup_frames": "30",
+              "cooldown_seconds": "5.0", "burst_count": "3",
+              "burst_interval_seconds": "0.5"},
+        # no reorient_existing field
+    )
+    assert res.status_code == 200
+    from wildwatch_server.db import get_engine
+    from sqlmodel import Session as SM
+    with SM(get_engine()) as s:
+        row = s.get(Camera, cam["id"])
+        assert row.pending_reorient_delta is None
+        # desired_config still set for the rotation change
+        assert json.loads(row.desired_config) == {"rotation": 180}

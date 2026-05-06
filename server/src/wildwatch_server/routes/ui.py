@@ -510,7 +510,18 @@ async def post_camera_config(
     reported = (hb.get("reported_config") or {}) if hb else {}
     diff = _diff_against_reported(submitted, reported)
 
+    # Reorient flag: only set pending_reorient_delta if rotation actually changes.
+    reorient_existing = form.get("reorient_existing") in ("on", "1", "true", "yes")
+    pending_delta: int | None = None
+    if reorient_existing and "rotation" in diff:
+        new_rot = diff["rotation"]
+        old_rot = reported.get("rotation") or 0
+        delta = (new_rot - old_rot) % 360
+        if delta in (90, 180, 270):
+            pending_delta = delta
+
     cam.desired_config = json.dumps(diff) if diff else None
+    cam.pending_reorient_delta = pending_delta
     session.add(cam)
     session.commit()
     session.refresh(cam)
