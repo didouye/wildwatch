@@ -235,3 +235,11 @@ def test_heartbeat_rejects_non_dict_status(client: TestClient) -> None:
         files=files,
     )
     assert res.status_code == 400
+
+
+def test_latest_agent_version_constant_exists() -> None:
+    from wildwatch_server.versions import LATEST_AGENT_VERSION
+
+    # Sanity: x.y.z, three integer parts.
+    parts = LATEST_AGENT_VERSION.split(".")
+    assert len(parts) == 3 and all(p.isdigit() for p in parts)
