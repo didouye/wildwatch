@@ -6,6 +6,30 @@
   {% set effective = dict(rc, **dc) %}
 {% endif %}
 
+{% set help = {
+  "rotation": "Rotates the camera image at the sensor level. Use this if the camera is mounted sideways or upside-down on a tree or pole. The capture service restarts to apply the change.",
+  "capture_width": "Width (px) of the full-resolution photo taken when motion triggers. Higher = more detail (better for identifying species) but larger files and slower upload. Default: 2304.",
+  "capture_height": "Height (px) of the full-resolution photo taken when motion triggers. Higher = more detail but larger files and slower upload. Default: 1296.",
+  "detection_width": "Width (px) of the low-res preview stream analyzed for motion -- independent from the capture resolution. Lower = faster detection and less CPU, but may miss small animals. Default: 640.",
+  "detection_height": "Height (px) of the low-res preview stream analyzed for motion. Lower = faster detection and less CPU, but may miss small animals. Default: 480.",
+  "pixel_threshold": "Per-pixel brightness change (0-255) above which a pixel is counted as 'moved'. Too low = noise and lighting flicker trigger false captures. Too high = only dramatic changes register. Default: 25.",
+  "area_threshold": "Fraction of the frame (0-1) that must change to trigger a capture. 0.02 = 2% of pixels. Raise (e.g. 0.05) to ignore small motions like rustling leaves; lower it to catch small animals.",
+  "background_alpha": "How fast the detector adapts its background model to gradual light changes (sunrise, drifting clouds). 0.05 = 5% blend per frame. Higher = adapts fast but motionless animals may be 'forgotten'. Lower = more stable but lags on light changes.",
+  "warmup_frames": "Frames ignored at startup before motion detection turns on. Lets the background model stabilize and avoids false triggers from exposure / white-balance settling. About 30 frames at ~15 FPS is roughly 2 seconds.",
+  "cooldown_seconds": "Minimum delay between two successive triggers, to avoid machine-gunning the same animal. Raise (10s+) if disk space is tight; lower (2-3s) to capture rapid distinct events.",
+  "burst_count": "Number of photos taken in rapid succession per trigger. More photos = better odds of a sharp, well-framed shot and captures multiple phases (landing, feeding, departure).",
+  "burst_interval_seconds": "Delay (seconds) between photos within a single burst. 0.5s = a 3-shot burst spans about 1s. Lower (0.2s) = rapid sequence; higher (1s+) lets behavior change between shots."
+} %}
+
+{% macro info_tip(text) -%}
+<span class="relative inline-flex group ml-1 align-middle">
+  <span tabindex="0" aria-label="info"
+        class="cursor-help inline-flex items-center justify-center w-4 h-4 rounded-full bg-slate-700 text-slate-300 text-[10px] font-bold leading-none hover:bg-slate-600 select-none">i</span>
+  <span role="tooltip"
+        class="invisible opacity-0 group-hover:visible group-hover:opacity-100 group-focus-within:visible group-focus-within:opacity-100 transition-opacity duration-150 absolute left-full ml-2 top-1/2 -translate-y-1/2 z-50 w-64 rounded bg-slate-950 border border-slate-600 p-2 text-xs font-normal leading-snug text-slate-200 shadow-lg whitespace-normal text-left pointer-events-none">{{ text }}</span>
+</span>
+{%- endmacro %}
+
 <div
   id="edit-settings-modal-{{ ctx.cam.id }}"
   class="hidden fixed inset-0 z-50 bg-slate-900/80 backdrop-blur p-4 flex items-center justify-center"
@@ -38,14 +62,14 @@
       <fieldset class="space-y-2">
         <legend class="font-semibold text-slate-200">Orientation</legend>
         <label class="flex items-center gap-3">
-          <span class="w-32">Rotation</span>
+          <span class="w-40">Rotation{{ info_tip(help.rotation) }}</span>
           <select name="rotation" class="bg-slate-900 border border-slate-700 rounded px-2 py-1">
             {% for r in [0, 90, 180, 270] %}
               <option value="{{ r }}" {% if effective.get("rotation", 0) == r %}selected{% endif %}>{{ r }}&deg;</option>
             {% endfor %}
           </select>
         </label>
-        <div class="reorient-row hidden flex items-start gap-3 pl-32 text-xs text-amber-200" data-initial-rotation="{{ effective.get('rotation', 0) }}">
+        <div class="reorient-row hidden flex items-start gap-3 pl-40 text-xs text-amber-200" data-initial-rotation="{{ effective.get('rotation', 0) }}">
           <input type="checkbox" name="reorient_existing" id="reorient-existing-{{ ctx.cam.id }}" checked
                  class="mt-0.5">
           <label for="reorient-existing-{{ ctx.cam.id }}">
@@ -87,7 +111,7 @@
           ("Detection height", "detection_height", 480),
         ] %}
           <label class="flex items-center gap-3">
-            <span class="w-32">{{ label }}</span>
+            <span class="w-40">{{ label }}{{ info_tip(help[name]) }}</span>
             <input type="number" name="{{ name }}" min="1"
                    value="{{ effective.get(name, default) }}"
                    class="bg-slate-900 border border-slate-700 rounded px-2 py-1 w-32" required>
@@ -105,7 +129,7 @@
           ("Cooldown (s)", "cooldown_seconds", 5.0, "0.1"),
         ] %}
           <label class="flex items-center gap-3">
-            <span class="w-32">{{ label }}</span>
+            <span class="w-40">{{ label }}{{ info_tip(help[name]) }}</span>
             <input type="number" name="{{ name }}" step="{{ step }}"
                    value="{{ effective.get(name, default) }}"
                    class="bg-slate-900 border border-slate-700 rounded px-2 py-1 w-32" required>
@@ -120,7 +144,7 @@
           ("Interval (s)", "burst_interval_seconds", 0.5, "0.1"),
         ] %}
           <label class="flex items-center gap-3">
-            <span class="w-32">{{ label }}</span>
+            <span class="w-40">{{ label }}{{ info_tip(help[name]) }}</span>
             <input type="number" name="{{ name }}" step="{{ step }}"
                    value="{{ effective.get(name, default) }}"
                    class="bg-slate-900 border border-slate-700 rounded px-2 py-1 w-32" required>
