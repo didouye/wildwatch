@@ -55,9 +55,13 @@ sudo cp "$SRC_DIR/capture/systemd/wildwatch-capture.service" /etc/systemd/system
 sudo cp "$SRC_DIR/agent/systemd/wildwatch-agent.service" /etc/systemd/system/
 sudo systemctl daemon-reload
 
-echo "==> Step 6/6: restart capture, enable + start agent"
+echo "==> Step 6/6: restart capture, enable + restart agent"
 sudo systemctl restart wildwatch-capture
-sudo systemctl enable --now wildwatch-agent
+# `enable --now` is idempotent: it does NOT restart an already-running service,
+# so on subsequent updates the agent would keep running stale code. Always
+# enable + restart to guarantee the new code is picked up.
+sudo systemctl enable wildwatch-agent
+sudo systemctl restart wildwatch-agent
 
 echo
 echo "==> Update done. Status:"
