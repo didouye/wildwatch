@@ -3,26 +3,10 @@
 {% block title %}WildWatch -- Gallery{% endblock %}
 
 {% block content %}
-<section class="space-y-4" id="gallery-root" data-total="{{ total }}">
+<section class="space-y-4" id="gallery-root">
   <div class="flex items-baseline justify-between gap-3 flex-wrap">
     <h1 class="text-2xl font-semibold">Gallery</h1>
-    <div class="flex items-center gap-3">
-      <p class="text-sm text-slate-400">{{ total }} photo{{ '' if total == 1 else 's' }}</p>
-      {% if total > 0 %}
-        <button
-          type="button"
-          id="select-toggle-btn"
-          onclick="WildwatchSelection.enable()"
-          class="rounded bg-slate-700 hover:bg-slate-600 px-3 py-1.5 text-sm font-medium"
-        >Select</button>
-        <button
-          type="button"
-          id="delete-all-filtered-btn"
-          onclick="WildwatchSelection.openDeleteAllModal()"
-          class="rounded bg-rose-700/80 hover:bg-rose-600 border border-rose-500 px-3 py-1.5 text-sm font-medium"
-        >Delete all {{ total }} matching</button>
-      {% endif %}
-    </div>
+    {% include "_gallery_header_actions.html" %}
   </div>
 
   <form
@@ -149,13 +133,13 @@
   window.WildwatchSelection = (function () {
     const state = { enabled: false, ids: new Set() };
 
-    function root() { return document.getElementById("gallery-root"); }
     function wrapper() { return document.getElementById("gallery-grid-wrapper"); }
     function bar() { return document.getElementById("selection-bar"); }
+    function headerActions() { return document.getElementById("gallery-header-actions"); }
 
     function totalMatching() {
-      const r = root();
-      return r ? parseInt(r.dataset.total || "0", 10) : 0;
+      const h = headerActions();
+      return h ? parseInt(h.dataset.total || "0", 10) : 0;
     }
 
     function pageCards() {

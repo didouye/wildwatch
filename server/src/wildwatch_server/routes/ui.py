@@ -156,11 +156,9 @@ def gallery(
     ).all()
 
     hostnames = sorted(
-        {row[0] for row in session.exec(select(Photo.hostname).distinct()).all() if row[0]}
+        {h for h in session.exec(select(Photo.hostname).distinct()).all() if h}
     )
-    all_tags = sorted(
-        row[0] for row in session.exec(select(Tag.name).distinct()).all()
-    )
+    all_tags = sorted(session.exec(select(Tag.name).distinct()).all())
     cameras_for_filter = session.exec(
         select(Camera).where(Camera.status != "revoked").order_by(Camera.hostname)
     ).all()
@@ -181,6 +179,7 @@ def gallery(
     prev_qs = urlencode({**base_qs, "page": page - 1}) if page > 1 else ""
     next_qs = urlencode({**base_qs, "page": page + 1}) if page < total_pages else ""
 
+    is_htmx = bool(request.headers.get("HX-Request"))
     context = {
         "photos": photos,
         "total": total,
@@ -193,6 +192,7 @@ def gallery(
         "hostnames": hostnames,
         "all_tags": all_tags,
         "cameras_for_filter": cameras_for_filter,
+        "oob": is_htmx,
         "filters": {
             "from_": from_,
             "to": to,
@@ -203,9 +203,7 @@ def gallery(
         },
     }
 
-    template = (
-        "_gallery_grid.html" if request.headers.get("HX-Request") else "gallery.html"
-    )
+    template = "_gallery_grid.html" if is_htmx else "gallery.html"
     return templates.TemplateResponse(request=request, name=template, context=context)
 
 

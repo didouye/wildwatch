@@ -1,0 +1,16 @@
+{# Header actions: photo count + Select + Delete-all-matching.
+   Used both inside gallery.html and as an OOB swap from _gallery_grid.html
+   so filtering keeps these in sync with the new total. #}
+<div id="gallery-header-actions" data-total="{{ total }}"
+  class="flex items-center gap-3"
+  {% if oob %}hx-swap-oob="true"{% endif %}>
+  <p class="text-sm text-slate-400">{{ total }} photo{{ '' if total == 1 else 's' }}</p>
+  {% if total > 0 %}
+    <button type="button" id="select-toggle-btn"
+      onclick="WildwatchSelection.enable()"
+      class="rounded bg-slate-700 hover:bg-slate-600 px-3 py-1.5 text-sm font-medium">Select</button>
+    <button type="button" id="delete-all-filtered-btn"
+      onclick="WildwatchSelection.openDeleteAllModal()"
+      class="rounded bg-rose-700/80 hover:bg-rose-600 border border-rose-500 px-3 py-1.5 text-sm font-medium">Delete all {{ total }} matching</button>
+  {% endif %}
+</div>

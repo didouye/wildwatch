@@ -1,4 +1,10 @@
-{# Partial used both in the full gallery page and as the htmx response. #}
+{# Partial used both in the full gallery page and as the htmx response.
+   When served as an htmx response, the header actions block below is
+   marked hx-swap-oob so the photo count + Delete-all button stay in sync
+   with the new filter result. #}
+{% if oob %}
+  {% include "_gallery_header_actions.html" %}
+{% endif %}
 <div id="gallery-grid-wrapper">
   {% if photos %}
     <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-3">
