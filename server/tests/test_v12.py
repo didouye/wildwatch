@@ -569,3 +569,47 @@ def test_camera_card_has_edit_settings_button(client: TestClient) -> None:
     res = client.get(f"/cameras/{cam['id']}/card")
     assert "Edit settings" in res.text
     assert f'edit-settings-modal-{cam["id"]}' in res.text  # references modal id
+
+
+def test_card_shows_update_pending_banner_with_diff(client: TestClient) -> None:
+    cam = _enroll(client)
+    _approve(client, cam["id"])
+    payload = {
+        "agent": {"version": "1.2.0"},
+        "reported_config": {"rotation": 0, "capture_width": 2304},
+    }
+    _heartbeat(client, cam["token"], payload)
+    # Set desired (just rotation differs)
+    from wildwatch_server.db import get_engine
+    from sqlmodel import Session as SM
+    with SM(get_engine()) as s:
+        s.get(Camera, cam["id"]).desired_config = json.dumps({"rotation": 180})
+        s.commit()
+
+    res = client.get(f"/cameras/{cam['id']}/card")
+    assert "Update pending" in res.text
+    assert "rotation" in res.text
+    assert "0" in res.text and "180" in res.text  # diff arrow
+    assert f'/cameras/{cam["id"]}/config/cancel' in res.text  # cancel button
+
+
+def test_card_shows_apply_error_banner(client: TestClient) -> None:
+    cam = _enroll(client)
+    _approve(client, cam["id"])
+    # Set desired
+    from wildwatch_server.db import get_engine
+    from sqlmodel import Session as SM
+    with SM(get_engine()) as s:
+        s.get(Camera, cam["id"]).desired_config = json.dumps({"rotation": 180})
+        s.commit()
+    # Heartbeat with applied_at + reported NOT matching → flags apply_error_observed
+    payload = {
+        "agent": {"version": "1.2.0"},
+        "applied_at": "2026-05-06T00:00:00+00:00",
+        "reported_config": {"rotation": 0},
+    }
+    _heartbeat(client, cam["token"], payload)
+
+    res = client.get(f"/cameras/{cam['id']}/card")
+    assert "Last apply" in res.text and "fail" in res.text.lower()
+    assert "Cancel update" in res.text or "/cancel" in res.text
