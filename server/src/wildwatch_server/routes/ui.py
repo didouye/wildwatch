@@ -523,6 +523,26 @@ async def post_camera_config(
     )
 
 
+@router.post("/cameras/{camera_id}/config/cancel", response_class=HTMLResponse)
+def cancel_camera_config(
+    camera_id: int,
+    request: Request,
+    session: Session = Depends(get_session),
+) -> HTMLResponse:
+    cam = session.get(Camera, camera_id)
+    if cam is None:
+        raise HTTPException(status_code=404, detail="Camera not found")
+    cam.desired_config = None
+    session.add(cam)
+    session.commit()
+    session.refresh(cam)
+    return templates.TemplateResponse(
+        request=request,
+        name="_camera_card.html",
+        context=_camera_card_context(cam, session),
+    )
+
+
 @router.get("/cameras", response_class=HTMLResponse)
 def cameras_page(
     request: Request, session: Session = Depends(get_session)

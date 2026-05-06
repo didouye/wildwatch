@@ -515,3 +515,18 @@ def test_post_camera_config_fresh_camera_no_reported_yet_stores_all_fields(clien
         import json as _json
         stored = _json.loads(row.desired_config)
         assert len(stored) == 12  # all 12 fields stored when fresh
+
+
+def test_post_cancel_clears_desired_config(client: TestClient) -> None:
+    cam = _enroll(client)
+    _approve(client, cam["id"])
+    from wildwatch_server.db import get_engine
+    from sqlmodel import Session as SM
+    with SM(get_engine()) as s:
+        s.get(Camera, cam["id"]).desired_config = json.dumps({"rotation": 180})
+        s.commit()
+
+    res = client.post(f"/cameras/{cam['id']}/config/cancel")
+    assert res.status_code == 200
+    with SM(get_engine()) as s:
+        assert s.get(Camera, cam["id"]).desired_config is None
