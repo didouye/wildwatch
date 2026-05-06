@@ -54,7 +54,9 @@ async def heartbeat(
     reported = parsed.get("reported_config") or {}
 
     apply_error_observed = False
-    if desired is not None and applied_at:
+    # Use truthiness check (not `is not None`) so an empty dict doesn't trigger
+    # vacuous-truth success (`all(... for _ in {}) == True`).
+    if desired and applied_at:
         # Agent claims it applied. Did it actually take effect?
         if all(reported.get(k) == v for k, v in desired.items()):
             # Success: clear desired
