@@ -1,0 +1,57 @@
+<div
+  id="update-camera-modal-{{ cam.id }}"
+  class="hidden fixed inset-0 z-50 bg-slate-900/80 backdrop-blur p-4 flex items-center justify-center"
+  onclick="if(event.target === this) this.classList.add('hidden')"
+>
+  <div class="w-full max-w-2xl rounded-lg bg-slate-800 border border-slate-700 p-6 space-y-4 max-h-[90vh] overflow-y-auto">
+    <header class="flex items-baseline justify-between">
+      <h2 class="text-xl font-semibold">Update {{ cam.display_name or cam.hostname }}</h2>
+      <button
+        type="button"
+        onclick="document.getElementById('update-camera-modal-{{ cam.id }}').classList.add('hidden')"
+        class="text-slate-400 hover:text-slate-200 text-2xl leading-none"
+      >&times;</button>
+    </header>
+
+    <p class="text-sm text-slate-400">
+      This pulls the latest WildWatch code on the RPi, refreshes both venvs,
+      reinstalls the systemd units, and restarts the services. Your camera
+      token and existing photos are preserved.
+    </p>
+
+    <div class="space-y-3">
+      <details open class="rounded border border-slate-700">
+        <summary class="cursor-pointer px-3 py-2 font-medium bg-slate-900/50">From your computer (SSH)</summary>
+        <div class="p-3 space-y-2 text-sm">
+          {% set cmd_local = 'ssh dietpi@' ~ cam.hostname ~ '.local "curl -fsSL https://raw.githubusercontent.com/didouye/wildwatch/main/_recovery/update.sh | bash"' %}
+          <div class="relative">
+            <pre id="update-cmd-local-{{ cam.id }}" class="rounded bg-slate-950 border border-slate-700 p-2 pr-16 text-xs overflow-x-auto"><code>{{ cmd_local }}</code></pre>
+            <button
+              type="button"
+              onclick="copyCmd('update-cmd-local-{{ cam.id }}', this)"
+              class="absolute top-1 right-1 rounded bg-slate-700 hover:bg-slate-600 px-2 py-0.5 text-xs"
+            >Copy</button>
+          </div>
+          <p class="text-xs text-slate-500">
+            Replace <code>dietpi@{{ cam.hostname }}.local</code> if your RPi is reachable at a different host.
+          </p>
+        </div>
+      </details>
+
+      <details class="rounded border border-slate-700">
+        <summary class="cursor-pointer px-3 py-2 font-medium bg-slate-900/50">On the RPi (already SSH'd)</summary>
+        <div class="p-3 space-y-2 text-sm">
+          {% set cmd_rpi = 'curl -fsSL https://raw.githubusercontent.com/didouye/wildwatch/main/_recovery/update.sh | bash' %}
+          <div class="relative">
+            <pre id="update-cmd-rpi-{{ cam.id }}" class="rounded bg-slate-950 border border-slate-700 p-2 pr-16 text-xs overflow-x-auto"><code>{{ cmd_rpi }}</code></pre>
+            <button
+              type="button"
+              onclick="copyCmd('update-cmd-rpi-{{ cam.id }}', this)"
+              class="absolute top-1 right-1 rounded bg-slate-700 hover:bg-slate-600 px-2 py-0.5 text-xs"
+            >Copy</button>
+          </div>
+        </div>
+      </details>
+    </div>
+  </div>
+</div>
