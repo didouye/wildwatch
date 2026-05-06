@@ -23,7 +23,9 @@
       <details open class="rounded border border-slate-700">
         <summary class="cursor-pointer px-3 py-2 font-medium bg-slate-900/50">From your computer (SSH)</summary>
         <div class="p-3 space-y-2 text-sm">
-          {% set cmd_local = 'ssh dietpi@' ~ cam.hostname ~ '.local "curl -fsSL https://raw.githubusercontent.com/didouye/wildwatch/main/_recovery/update.sh | bash"' %}
+          {# Add .local mDNS suffix only if hostname is a bare label (no dot, no IP). #}
+          {% set ssh_host = cam.hostname if '.' in cam.hostname else cam.hostname ~ '.local' %}
+          {% set cmd_local = 'ssh dietpi@' ~ ssh_host ~ ' "curl -fsSL https://raw.githubusercontent.com/didouye/wildwatch/main/_recovery/update.sh | bash"' %}
           <div class="relative">
             <pre id="update-cmd-local-{{ cam.id }}" class="rounded bg-slate-950 border border-slate-700 p-2 pr-16 text-xs overflow-x-auto"><code>{{ cmd_local }}</code></pre>
             <button
@@ -33,7 +35,7 @@
             >Copy</button>
           </div>
           <p class="text-xs text-slate-500">
-            Replace <code>dietpi@{{ cam.hostname }}.local</code> if your RPi is reachable at a different host.
+            Replace <code>dietpi@{{ ssh_host }}</code> if your RPi is reachable at a different host.
           </p>
         </div>
       </details>

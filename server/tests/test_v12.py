@@ -276,10 +276,23 @@ def test_card_context_agent_status_outdated(client: TestClient) -> None:
 
 
 def test_card_includes_update_modal_when_outdated(client: TestClient) -> None:
-    cam = _enroll(client)
+    # Bare hostname (no dot) -- modal appends .local for mDNS.
+    cam = _enroll(client, hostname="dietpi")
     _approve(client, cam["id"])
     _heartbeat(client, cam["token"], {"agent": {"version": "0.9.0", "uptime_s": 1}})
     res = client.get(f"/cameras/{cam['id']}/card")
     assert f'id="update-camera-modal-{cam["id"]}"' in res.text
     assert "raw.githubusercontent.com/didouye/wildwatch/main/_recovery/update.sh" in res.text
-    assert f"dietpi@{cam['hostname']}.local" in res.text
+    assert "dietpi@dietpi.local" in res.text
+
+
+def test_update_modal_does_not_double_dot_local_when_hostname_already_qualified(
+    client: TestClient,
+) -> None:
+    # Hostname already contains a dot (FQDN, IP, or pre-existing .local) -> keep as-is.
+    cam = _enroll(client, hostname="dietpi.local")
+    _approve(client, cam["id"])
+    _heartbeat(client, cam["token"], {"agent": {"version": "0.9.0", "uptime_s": 1}})
+    res = client.get(f"/cameras/{cam['id']}/card")
+    assert "dietpi@dietpi.local" in res.text
+    assert "dietpi.local.local" not in res.text  # the bug we are guarding against
