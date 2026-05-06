@@ -60,25 +60,18 @@ def _bool_param(value: str | None) -> bool:
     return value is not None and value.lower() in {"1", "true", "yes", "on"}
 
 
-@router.get("/gallery", response_class=HTMLResponse)
-def gallery(
-    request: Request,
-    page: int = Query(default=1, ge=1),
-    from_: str | None = Query(default=None, alias="from"),
-    to: str | None = Query(default=None),
-    hostname: str | None = Query(default=None),
-    camera_id: int | None = Query(default=None),
-    favorite: str | None = Query(default=None),
-    tag: str | None = Query(default=None),
-    session: Session = Depends(get_session),
-) -> HTMLResponse:
-    from_date = _parse_date(from_)
-    to_date = _parse_date(to)
-    favorite_only = _bool_param(favorite)
-
-    query = select(Photo)
-    count_query = select(func.count()).select_from(Photo)
-
+def _apply_photo_filters(
+    query,
+    count_query,
+    *,
+    from_date: date | None,
+    to_date: date | None,
+    hostname: str | None,
+    camera_id: int | None,
+    favorite_only: bool,
+    tag: str | None,
+):
+    """Apply gallery filters to a (select_photos, select_count) pair."""
     if from_date is not None:
         bound = datetime.combine(from_date, datetime.min.time(), tzinfo=timezone.utc)
         query = query.where(Photo.captured_at >= bound)
@@ -104,6 +97,37 @@ def gallery(
         )
         query = query.where(Photo.id.in_(tag_q))
         count_query = count_query.where(Photo.id.in_(tag_q))
+    return query, count_query
+
+
+@router.get("/gallery", response_class=HTMLResponse)
+def gallery(
+    request: Request,
+    page: int = Query(default=1, ge=1),
+    from_: str | None = Query(default=None, alias="from"),
+    to: str | None = Query(default=None),
+    hostname: str | None = Query(default=None),
+    camera_id: int | None = Query(default=None),
+    favorite: str | None = Query(default=None),
+    tag: str | None = Query(default=None),
+    session: Session = Depends(get_session),
+) -> HTMLResponse:
+    from_date = _parse_date(from_)
+    to_date = _parse_date(to)
+    favorite_only = _bool_param(favorite)
+
+    query = select(Photo)
+    count_query = select(func.count()).select_from(Photo)
+    query, count_query = _apply_photo_filters(
+        query,
+        count_query,
+        from_date=from_date,
+        to_date=to_date,
+        hostname=hostname,
+        camera_id=camera_id,
+        favorite_only=favorite_only,
+        tag=tag,
+    )
 
     total = int(session.exec(count_query).one())
     total_pages = max(1, (total + PAGE_SIZE - 1) // PAGE_SIZE)
@@ -340,6 +364,56 @@ def bulk_action(
         affected += 1
     session.commit()
     return {"action": action, "affected": affected}
+
+
+@router.post("/photos/bulk_filtered")
+def bulk_filtered_delete(
+    confirm_count: int = Form(...),
+    from_: str | None = Form(default=None, alias="from"),
+    to: str | None = Form(default=None),
+    hostname: str | None = Form(default=None),
+    camera_id: int | None = Form(default=None),
+    favorite: str | None = Form(default=None),
+    tag: str | None = Form(default=None),
+    session: Session = Depends(get_session),
+) -> dict:
+    """Delete every photo matching the gallery filters, gated by a count check."""
+    from_date = _parse_date(from_)
+    to_date = _parse_date(to)
+    favorite_only = _bool_param(favorite)
+
+    query = select(Photo)
+    count_query = select(func.count()).select_from(Photo)
+    query, count_query = _apply_photo_filters(
+        query,
+        count_query,
+        from_date=from_date,
+        to_date=to_date,
+        hostname=hostname,
+        camera_id=camera_id,
+        favorite_only=favorite_only,
+        tag=tag,
+    )
+
+    actual = int(session.exec(count_query).one())
+    if actual != confirm_count:
+        # Photo set drifted between preview and confirmation -- bail out so the
+        # operator can re-check what they're about to delete.
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                f"Photo count changed (expected {confirm_count}, found {actual}). "
+                "Reload the gallery and try again."
+            ),
+        )
+
+    deleted = 0
+    for photo in session.exec(query).all():
+        _delete_photo_assets(photo)
+        session.delete(photo)
+        deleted += 1
+    session.commit()
+    return {"deleted": deleted}
 
 
 # ---------- Stats page ----------

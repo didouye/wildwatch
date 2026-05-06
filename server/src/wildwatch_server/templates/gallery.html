@@ -3,13 +3,30 @@
 {% block title %}WildWatch -- Gallery{% endblock %}
 
 {% block content %}
-<section class="space-y-4">
-  <div class="flex items-baseline justify-between">
+<section class="space-y-4" id="gallery-root" data-total="{{ total }}">
+  <div class="flex items-baseline justify-between gap-3 flex-wrap">
     <h1 class="text-2xl font-semibold">Gallery</h1>
-    <p class="text-sm text-slate-400">{{ total }} photo{{ '' if total == 1 else 's' }}</p>
+    <div class="flex items-center gap-3">
+      <p class="text-sm text-slate-400">{{ total }} photo{{ '' if total == 1 else 's' }}</p>
+      {% if total > 0 %}
+        <button
+          type="button"
+          id="select-toggle-btn"
+          onclick="WildwatchSelection.enable()"
+          class="rounded bg-slate-700 hover:bg-slate-600 px-3 py-1.5 text-sm font-medium"
+        >Select</button>
+        <button
+          type="button"
+          id="delete-all-filtered-btn"
+          onclick="WildwatchSelection.openDeleteAllModal()"
+          class="rounded bg-rose-700/80 hover:bg-rose-600 border border-rose-500 px-3 py-1.5 text-sm font-medium"
+        >Delete all {{ total }} matching</button>
+      {% endif %}
+    </div>
   </div>
 
   <form
+    id="gallery-filters"
     class="flex flex-wrap items-end gap-3 rounded-lg bg-slate-800 p-4 border border-slate-700"
     hx-get="/gallery"
     hx-target="#gallery-grid-wrapper"
@@ -64,4 +81,239 @@
     {% include "_gallery_grid.html" %}
   </div>
 </section>
+
+{% if total > 0 %}
+<!-- Selection action bar (hidden until Select is clicked) -->
+<div
+  id="selection-bar"
+  class="fixed bottom-0 inset-x-0 z-40 hidden border-t border-slate-700 bg-slate-900/95 backdrop-blur"
+>
+  <div class="mx-auto max-w-7xl px-4 py-3 flex flex-wrap items-center gap-3">
+    <span class="text-sm font-medium"><span id="selection-count">0</span> selected</span>
+    <button type="button" onclick="WildwatchSelection.selectAllOnPage()"
+      class="rounded bg-slate-700 hover:bg-slate-600 px-3 py-1.5 text-sm">Select all on page</button>
+    <button type="button" onclick="WildwatchSelection.clear()"
+      class="rounded bg-slate-700 hover:bg-slate-600 px-3 py-1.5 text-sm">Clear</button>
+    <div class="flex-1"></div>
+    <button type="button" onclick="WildwatchSelection.disable()"
+      class="rounded px-3 py-1.5 text-sm text-slate-300 hover:text-white">Cancel</button>
+    <button type="button" id="delete-selected-btn"
+      onclick="WildwatchSelection.openDeleteSelectedModal()"
+      disabled
+      class="rounded bg-rose-700 hover:bg-rose-600 disabled:bg-slate-700 disabled:text-slate-500 px-3 py-1.5 text-sm font-medium">
+      Delete selected
+    </button>
+  </div>
+</div>
+
+<!-- Confirmation modal: delete selected ids -->
+<div id="modal-delete-selected"
+  class="fixed inset-0 z-50 hidden bg-black/60 flex items-center justify-center p-4">
+  <div class="bg-slate-800 border border-slate-700 rounded-lg max-w-md w-full p-5 space-y-4">
+    <h2 class="text-lg font-semibold text-rose-300">Delete <span id="modal-selected-count">0</span> photo(s)?</h2>
+    <p class="text-sm text-slate-300">This permanently removes the selected photos and their thumbnails. This cannot be undone.</p>
+    <div class="flex justify-end gap-2">
+      <button type="button" onclick="WildwatchSelection.closeModals()"
+        class="rounded bg-slate-700 hover:bg-slate-600 px-3 py-1.5 text-sm">Cancel</button>
+      <button type="button" onclick="WildwatchSelection.confirmDeleteSelected()"
+        class="rounded bg-rose-700 hover:bg-rose-600 px-3 py-1.5 text-sm font-medium">Delete</button>
+    </div>
+  </div>
+</div>
+
+<!-- Confirmation modal: delete all matching -->
+<div id="modal-delete-all"
+  class="fixed inset-0 z-50 hidden bg-black/60 flex items-center justify-center p-4">
+  <div class="bg-slate-800 border border-rose-700 rounded-lg max-w-md w-full p-5 space-y-4">
+    <h2 class="text-lg font-semibold text-rose-300">Delete all {{ total }} matching photo(s)?</h2>
+    <p class="text-sm text-slate-300">
+      Every photo matching the current filters will be permanently deleted (including the JPEGs and thumbnails on disk).
+      This cannot be undone.
+    </p>
+    {% if total > 50 %}
+      <p class="text-sm text-amber-300">Confirm by typing <span class="font-mono">DELETE</span>:</p>
+      <input id="delete-all-confirm-text" type="text" autocomplete="off"
+        class="w-full rounded bg-slate-900 border border-slate-700 px-2 py-1 text-slate-100 font-mono">
+    {% endif %}
+    <div class="flex justify-end gap-2">
+      <button type="button" onclick="WildwatchSelection.closeModals()"
+        class="rounded bg-slate-700 hover:bg-slate-600 px-3 py-1.5 text-sm">Cancel</button>
+      <button type="button" onclick="WildwatchSelection.confirmDeleteAll()"
+        class="rounded bg-rose-700 hover:bg-rose-600 px-3 py-1.5 text-sm font-medium">Delete all</button>
+    </div>
+  </div>
+</div>
+{% endif %}
+
+<script>
+  window.WildwatchSelection = (function () {
+    const state = { enabled: false, ids: new Set() };
+
+    function root() { return document.getElementById("gallery-root"); }
+    function wrapper() { return document.getElementById("gallery-grid-wrapper"); }
+    function bar() { return document.getElementById("selection-bar"); }
+
+    function totalMatching() {
+      const r = root();
+      return r ? parseInt(r.dataset.total || "0", 10) : 0;
+    }
+
+    function pageCards() {
+      return Array.from(document.querySelectorAll("[data-photo-id]"));
+    }
+
+    function refreshUI() {
+      const w = wrapper();
+      if (w) w.classList.toggle("selecting", state.enabled);
+      const b = bar();
+      if (b) b.classList.toggle("hidden", !state.enabled);
+      const toggle = document.getElementById("select-toggle-btn");
+      if (toggle) toggle.classList.toggle("hidden", state.enabled);
+      const delAll = document.getElementById("delete-all-filtered-btn");
+      if (delAll) delAll.classList.toggle("hidden", state.enabled);
+      const cnt = document.getElementById("selection-count");
+      if (cnt) cnt.textContent = state.ids.size;
+      const delBtn = document.getElementById("delete-selected-btn");
+      if (delBtn) delBtn.disabled = state.ids.size === 0;
+      pageCards().forEach((card) => {
+        const id = parseInt(card.dataset.photoId, 10);
+        card.classList.toggle("ring-2", state.ids.has(id));
+        card.classList.toggle("ring-rose-500", state.ids.has(id));
+        const cb = card.querySelector(".sel-check");
+        if (cb) {
+          cb.checked = state.ids.has(id);
+          cb.classList.toggle("hidden", !state.enabled);
+        }
+      });
+    }
+
+    function onCardClick(ev) {
+      if (!state.enabled) return;
+      const card = ev.currentTarget;
+      const id = parseInt(card.dataset.photoId, 10);
+      if (Number.isNaN(id)) return;
+      ev.preventDefault();
+      if (state.ids.has(id)) state.ids.delete(id);
+      else state.ids.add(id);
+      refreshUI();
+    }
+
+    function bind() {
+      pageCards().forEach((card) => {
+        if (card._wwBound) return;
+        card._wwBound = true;
+        card.addEventListener("click", onCardClick);
+      });
+      refreshUI();
+    }
+
+    function enable() {
+      state.enabled = true;
+      refreshUI();
+    }
+
+    function disable() {
+      state.enabled = false;
+      state.ids.clear();
+      refreshUI();
+    }
+
+    function clear() {
+      state.ids.clear();
+      refreshUI();
+    }
+
+    function selectAllOnPage() {
+      pageCards().forEach((c) => state.ids.add(parseInt(c.dataset.photoId, 10)));
+      refreshUI();
+    }
+
+    function openDeleteSelectedModal() {
+      if (state.ids.size === 0) return;
+      document.getElementById("modal-selected-count").textContent = state.ids.size;
+      document.getElementById("modal-delete-selected").classList.remove("hidden");
+    }
+
+    function openDeleteAllModal() {
+      const m = document.getElementById("modal-delete-all");
+      m.classList.remove("hidden");
+      const txt = document.getElementById("delete-all-confirm-text");
+      if (txt) { txt.value = ""; txt.focus(); }
+    }
+
+    function closeModals() {
+      document.getElementById("modal-delete-selected").classList.add("hidden");
+      document.getElementById("modal-delete-all").classList.add("hidden");
+    }
+
+    async function confirmDeleteSelected() {
+      const ids = Array.from(state.ids);
+      const fd = new FormData();
+      fd.append("action", "delete");
+      ids.forEach((id) => fd.append("ids", String(id)));
+      const res = await fetch("/photos/bulk", { method: "POST", body: fd });
+      if (!res.ok) {
+        alert("Delete failed: " + res.status + " " + (await res.text()));
+        return;
+      }
+      closeModals();
+      disable();
+      reloadGallery();
+    }
+
+    async function confirmDeleteAll() {
+      const total = totalMatching();
+      if (total > 50) {
+        const txt = document.getElementById("delete-all-confirm-text");
+        if (!txt || txt.value.trim() !== "DELETE") {
+          if (txt) {
+            txt.classList.add("border-rose-500");
+            txt.focus();
+          }
+          return;
+        }
+      }
+      const filters = currentFilters();
+      const fd = new FormData();
+      fd.append("confirm_count", String(total));
+      Object.entries(filters).forEach(([k, v]) => {
+        if (v !== "" && v !== null && v !== undefined) fd.append(k, v);
+      });
+      const res = await fetch("/photos/bulk_filtered", { method: "POST", body: fd });
+      if (!res.ok) {
+        const detail = await res.text();
+        alert("Delete failed: " + res.status + " " + detail);
+        return;
+      }
+      closeModals();
+      reloadGallery();
+    }
+
+    function currentFilters() {
+      const form = document.getElementById("gallery-filters");
+      if (!form) return {};
+      const data = new FormData(form);
+      const out = {};
+      for (const [k, v] of data.entries()) {
+        if (typeof v === "string" && v.length > 0) out[k] = v;
+      }
+      return out;
+    }
+
+    function reloadGallery() {
+      const url = new URL("/gallery", window.location.origin);
+      Object.entries(currentFilters()).forEach(([k, v]) => url.searchParams.set(k, v));
+      window.location.assign(url.toString());
+    }
+
+    document.addEventListener("DOMContentLoaded", bind);
+    document.body.addEventListener("htmx:afterSwap", (e) => {
+      if (e.target && e.target.id === "gallery-grid-wrapper") bind();
+    });
+
+    return { enable, disable, clear, selectAllOnPage,
+      openDeleteSelectedModal, openDeleteAllModal,
+      confirmDeleteSelected, confirmDeleteAll, closeModals };
+  })();
+</script>
 {% endblock %}

@@ -290,6 +290,117 @@ def test_bulk_delete_ignores_unknown_ids(
 
 
 # =====================================================
+# Bulk delete by filters (web UI)
+# =====================================================
+
+
+def test_bulk_filtered_deletes_only_matching_photos(
+    client: TestClient, session: Session, tmp_path: Path
+) -> None:
+    """Filtered delete must respect the same filters as /gallery."""
+    keep = _seed_photo(session, tmp_path, relative="keep.jpg", hostname="OtherHost")
+    _seed_photo(session, tmp_path, relative="d1.jpg", hostname="DietPi")
+    _seed_photo(session, tmp_path, relative="d2.jpg", hostname="DietPi")
+
+    res = client.post(
+        "/photos/bulk_filtered",
+        data={"hostname": "DietPi", "confirm_count": 2},
+    )
+    assert res.status_code == 200, res.text
+    assert res.json() == {"deleted": 2}
+
+    from sqlmodel import select as sql_select
+
+    from wildwatch_server.models import Photo
+
+    remaining = session.exec(sql_select(Photo)).all()
+    assert [p.id for p in remaining] == [keep.id]
+    assert not (tmp_path / "photos" / "d1.jpg").exists()
+    assert not (tmp_path / "photos" / "d2.jpg").exists()
+    assert (tmp_path / "photos" / "keep.jpg").exists()
+
+
+def test_bulk_filtered_no_filters_deletes_everything(
+    client: TestClient, session: Session, tmp_path: Path
+) -> None:
+    _seed_photo(session, tmp_path, relative="a.jpg")
+    _seed_photo(session, tmp_path, relative="b.jpg")
+    _seed_photo(session, tmp_path, relative="c.jpg")
+
+    res = client.post("/photos/bulk_filtered", data={"confirm_count": 3})
+    assert res.status_code == 200
+    assert res.json() == {"deleted": 3}
+
+    from sqlmodel import select as sql_select
+
+    from wildwatch_server.models import Photo
+
+    assert session.exec(sql_select(Photo)).all() == []
+
+
+def test_bulk_filtered_count_mismatch_returns_409(
+    client: TestClient, session: Session, tmp_path: Path
+) -> None:
+    """Drift-detection: if confirm_count doesn't match, 409 and no deletes."""
+    _seed_photo(session, tmp_path, relative="a.jpg")
+    _seed_photo(session, tmp_path, relative="b.jpg")
+
+    res = client.post(
+        "/photos/bulk_filtered",
+        data={"confirm_count": 5},
+    )
+    assert res.status_code == 409
+    from sqlmodel import select as sql_select
+
+    from wildwatch_server.models import Photo
+
+    assert len(session.exec(sql_select(Photo)).all()) == 2
+    assert (tmp_path / "photos" / "a.jpg").exists()
+
+
+def test_bulk_filtered_respects_favorite_filter(
+    client: TestClient, session: Session, tmp_path: Path
+) -> None:
+    fav = _seed_photo(session, tmp_path, relative="fav.jpg")
+    non_fav = _seed_photo(session, tmp_path, relative="meh.jpg")
+    fav.is_favorite = True
+    session.add(fav)
+    session.commit()
+
+    res = client.post(
+        "/photos/bulk_filtered",
+        data={"favorite": "true", "confirm_count": 1},
+    )
+    assert res.status_code == 200
+    assert res.json() == {"deleted": 1}
+    session.expire_all()
+    survivor = session.get(type(non_fav), non_fav.id)
+    assert survivor is not None
+
+
+# =====================================================
+# Gallery selection UI affordances
+# =====================================================
+
+
+def test_gallery_shows_select_button_when_photos_exist(
+    client: TestClient, session: Session, tmp_path: Path
+) -> None:
+    _seed_photo(session, tmp_path)
+    res = client.get("/gallery")
+    assert res.status_code == 200
+    assert 'id="select-toggle-btn"' in res.text
+    assert "Delete all 1 matching" in res.text
+
+
+def test_gallery_hides_select_button_when_empty(client: TestClient) -> None:
+    res = client.get("/gallery")
+    assert res.status_code == 200
+    assert 'id="select-toggle-btn"' not in res.text
+    assert "Delete all" not in res.text
+
+
+# =====================================================
 # Stats page
 # =====================================================
 

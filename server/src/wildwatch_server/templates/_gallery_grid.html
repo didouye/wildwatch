@@ -3,7 +3,11 @@
   {% if photos %}
     <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-3">
       {% for photo in photos %}
-        <a href="/photos/{{ photo.id }}" class="group relative block overflow-hidden rounded-lg bg-slate-800 border border-slate-700 hover:border-emerald-500 transition">
+        <a href="/photos/{{ photo.id }}"
+           data-photo-id="{{ photo.id }}"
+           class="group relative block overflow-hidden rounded-lg bg-slate-800 border border-slate-700 hover:border-emerald-500 transition">
+          <input type="checkbox" class="sel-check hidden absolute top-2 left-2 z-10 w-5 h-5 accent-rose-500"
+            tabindex="-1" onclick="event.preventDefault()">
           <img
             src="/thumb/150/{{ photo.id }}"
             alt="Photo {{ photo.id }}"
