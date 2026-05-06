@@ -30,8 +30,9 @@ SyslogIdentifier=wildwatch-capture
 NoNewPrivileges=true
 ProtectSystem=strict
 ProtectHome=read-only
-# The service needs to write inside ~/wildwatch/ (queue, sent, dead, config).
-ReadWritePaths=/home/dietpi/wildwatch
+# The service needs to write inside ~/wildwatch/ (queue, sent, dead, config)
+# AND /run/wildwatch/ (status.json + preview.jpg, read by wildwatch-agent).
+ReadWritePaths=/home/dietpi/wildwatch /run/wildwatch
 PrivateTmp=true
 
 [Install]
