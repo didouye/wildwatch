@@ -185,6 +185,13 @@ class Camera(SQLModel, table=True):
     agent_last_seen_at: datetime | None = Field(default=None)
     pending_reorient_delta: int | None = Field(default=None)
 
+    @property
+    def desired_config_dict(self) -> dict | None:
+        if self.desired_config:
+            import json
+            return json.loads(self.desired_config)
+        return None
+
 
 class CameraEnrollRequest(SQLModel):
     """Body of POST /api/cameras/enroll."""

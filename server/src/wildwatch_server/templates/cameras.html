@@ -72,6 +72,11 @@
           {% endwith %}
         {% endif %}
       {% endfor %}
+
+      {# Edit settings modals: one per approved camera, outside the polled card. #}
+      {% for ctx in approved %}
+        {% include "_edit_settings_modal.html" %}
+      {% endfor %}
     {% else %}
       <p class="text-sm text-slate-500">No camera enrolled yet. Click <em>Add a camera</em> above.</p>
     {% endif %}

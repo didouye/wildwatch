@@ -530,3 +530,42 @@ def test_post_cancel_clears_desired_config(client: TestClient) -> None:
     assert res.status_code == 200
     with SM(get_engine()) as s:
         assert s.get(Camera, cam["id"]).desired_config is None
+
+
+def test_cameras_page_includes_edit_settings_modal(client: TestClient) -> None:
+    cam = _enroll(client)
+    _approve(client, cam["id"])
+    payload = {
+        "agent": {"version": "1.2.0"},
+        "reported_config": {"rotation": 0, "capture_width": 2304, "capture_height": 1296,
+                            "detection_width": 640, "detection_height": 480,
+                            "pixel_threshold": 25, "area_threshold": 0.02,
+                            "background_alpha": 0.05, "warmup_frames": 30,
+                            "cooldown_seconds": 5.0, "burst_count": 3,
+                            "burst_interval_seconds": 0.5},
+    }
+    _heartbeat(client, cam["token"], payload)
+
+    res = client.get("/cameras")
+    assert res.status_code == 200
+    assert f'id="edit-settings-modal-{cam["id"]}"' in res.text
+    assert f'action="/cameras/{cam["id"]}/config"' in res.text
+    # All 12 form fields rendered
+    for field in ("rotation", "capture_width", "capture_height", "detection_width",
+                  "detection_height", "pixel_threshold", "area_threshold",
+                  "background_alpha", "warmup_frames", "cooldown_seconds",
+                  "burst_count", "burst_interval_seconds"):
+        assert f'name="{field}"' in res.text
+    # Pre-filled with reported_config values
+    assert 'value="0"' in res.text  # rotation
+    assert 'value="2304"' in res.text  # capture_width
+
+
+def test_camera_card_has_edit_settings_button(client: TestClient) -> None:
+    cam = _enroll(client)
+    _approve(client, cam["id"])
+    _heartbeat(client, cam["token"], {"agent": {"version": "1.2.0"},
+                                       "reported_config": {"rotation": 0}})
+    res = client.get(f"/cameras/{cam['id']}/card")
+    assert "Edit settings" in res.text
+    assert f'edit-settings-modal-{cam["id"]}' in res.text  # references modal id

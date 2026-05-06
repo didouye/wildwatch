@@ -130,6 +130,11 @@
 
   <div class="flex gap-3 text-xs">
     <a href="/gallery?camera_id={{ cam.id }}" class="text-emerald-300 hover:text-emerald-200">See photos &rarr;</a>
+    <button
+      type="button"
+      onclick="document.getElementById('edit-settings-modal-{{ cam.id }}').classList.remove('hidden')"
+      class="text-emerald-300 hover:text-emerald-200"
+    >Edit settings</button>
     <form method="post" action="/cameras/{{ cam.id }}/revoke" onsubmit="return confirm('Revoke this camera?');">
       <button class="text-rose-400 hover:text-rose-300">Revoke</button>
     </form>

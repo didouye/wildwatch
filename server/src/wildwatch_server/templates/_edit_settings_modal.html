@@ -1,0 +1,112 @@
+{# Edit settings modal -- per-camera, rendered from cameras.html outside the htmx-polled card. #}
+{% set rc = ctx.hb.reported_config if ctx.hb and ctx.hb.reported_config else {} %}
+{% set dc = ctx.cam.desired_config_dict if ctx.cam.desired_config_dict else {} %}
+{% set effective = rc | default({}) %}
+{% if dc %}
+  {% set effective = dict(rc, **dc) %}
+{% endif %}
+
+<div
+  id="edit-settings-modal-{{ ctx.cam.id }}"
+  class="hidden fixed inset-0 z-50 bg-slate-900/80 backdrop-blur p-4 flex items-center justify-center"
+  onclick="if(event.target === this) this.classList.add('hidden')"
+>
+  <div class="w-full max-w-2xl rounded-lg bg-slate-800 border border-slate-700 p-6 space-y-4 max-h-[90vh] overflow-y-auto">
+    <header class="flex items-baseline justify-between">
+      <h2 class="text-xl font-semibold">Edit settings -- {{ ctx.cam.display_name or ctx.cam.hostname }}</h2>
+      <button
+        type="button"
+        onclick="document.getElementById('edit-settings-modal-{{ ctx.cam.id }}').classList.add('hidden')"
+        class="text-slate-400 hover:text-slate-200 text-2xl leading-none"
+      >&times;</button>
+    </header>
+
+    <p class="text-sm text-slate-400">
+      Changes are pushed to the camera at its next heartbeat (within 30s).
+      <code>wildwatch-capture</code> restarts to pick up the new config; expect
+      a few seconds of downtime per setting change.
+    </p>
+
+    <form
+      method="post"
+      action="/cameras/{{ ctx.cam.id }}/config"
+      hx-post="/cameras/{{ ctx.cam.id }}/config"
+      hx-target="#camera-card-{{ ctx.cam.id }}"
+      hx-swap="outerHTML"
+      class="space-y-4 text-sm"
+    >
+      <fieldset class="space-y-2">
+        <legend class="font-semibold text-slate-200">Orientation</legend>
+        <label class="flex items-center gap-3">
+          <span class="w-32">Rotation</span>
+          <select name="rotation" class="bg-slate-900 border border-slate-700 rounded px-2 py-1">
+            {% for r in [0, 90, 180, 270] %}
+              <option value="{{ r }}" {% if effective.get("rotation", 0) == r %}selected{% endif %}>{{ r }}&deg;</option>
+            {% endfor %}
+          </select>
+        </label>
+      </fieldset>
+
+      <fieldset class="space-y-2">
+        <legend class="font-semibold text-slate-200">Resolution</legend>
+        {% for label, name, default in [
+          ("Capture width", "capture_width", 2304),
+          ("Capture height", "capture_height", 1296),
+          ("Detection width", "detection_width", 640),
+          ("Detection height", "detection_height", 480),
+        ] %}
+          <label class="flex items-center gap-3">
+            <span class="w-32">{{ label }}</span>
+            <input type="number" name="{{ name }}" min="1"
+                   value="{{ effective.get(name, default) }}"
+                   class="bg-slate-900 border border-slate-700 rounded px-2 py-1 w-32" required>
+          </label>
+        {% endfor %}
+      </fieldset>
+
+      <fieldset class="space-y-2">
+        <legend class="font-semibold text-slate-200">Motion detection</legend>
+        {% for label, name, default, step in [
+          ("Pixel threshold", "pixel_threshold", 25, "1"),
+          ("Area threshold", "area_threshold", 0.02, "0.001"),
+          ("Background alpha", "background_alpha", 0.05, "0.01"),
+          ("Warmup frames", "warmup_frames", 30, "1"),
+          ("Cooldown (s)", "cooldown_seconds", 5.0, "0.1"),
+        ] %}
+          <label class="flex items-center gap-3">
+            <span class="w-32">{{ label }}</span>
+            <input type="number" name="{{ name }}" step="{{ step }}"
+                   value="{{ effective.get(name, default) }}"
+                   class="bg-slate-900 border border-slate-700 rounded px-2 py-1 w-32" required>
+          </label>
+        {% endfor %}
+      </fieldset>
+
+      <fieldset class="space-y-2">
+        <legend class="font-semibold text-slate-200">Burst</legend>
+        {% for label, name, default, step in [
+          ("Photos per burst", "burst_count", 3, "1"),
+          ("Interval (s)", "burst_interval_seconds", 0.5, "0.1"),
+        ] %}
+          <label class="flex items-center gap-3">
+            <span class="w-32">{{ label }}</span>
+            <input type="number" name="{{ name }}" step="{{ step }}"
+                   value="{{ effective.get(name, default) }}"
+                   class="bg-slate-900 border border-slate-700 rounded px-2 py-1 w-32" required>
+          </label>
+        {% endfor %}
+      </fieldset>
+
+      <div class="flex justify-end gap-2 pt-2">
+        <button type="button"
+                onclick="document.getElementById('edit-settings-modal-{{ ctx.cam.id }}').classList.add('hidden')"
+                class="text-slate-400 hover:text-slate-200 px-3 py-1.5">Cancel</button>
+        <button type="submit"
+                onclick="document.getElementById('edit-settings-modal-{{ ctx.cam.id }}').classList.add('hidden')"
+                class="rounded bg-emerald-600 hover:bg-emerald-500 px-3 py-1.5 font-medium">
+          Apply
+        </button>
+      </div>
+    </form>
+  </div>
+</div>
