@@ -263,6 +263,39 @@ Web auth (login/password) and HTTPS termination are deferred to V1.0.
 - [x] 145 tests green: server 116 (~14 new), capture 26 (untouched),
       agent 19 (~9 new). Ruff clean across all three packages.
 
+### V1.2 PR 3: reorient historical photos on rotation change
+
+- [x] `wildwatch_server.reorient` module: walks
+      `Photo.camera_id == X AND captured_at <= ack_time`, rotates each
+      JPEG in place at q=95 (PIL counter-clockwise = `-delta` for the
+      operator's clockwise mental model), atomic save (`tmp + os.replace`),
+      deletes cached thumbnails (lazy regeneration on next view), swaps
+      `camera_width/height` for `delta in {90, 270}`, clears
+      `pending_reorient_delta` at the end
+- [x] In-memory `reorient_progress[camera_id] = (done, total)` updated
+      every photo under a `threading.Lock`. Lost on server restart (only
+      the counter; rotated photos stay rotated)
+- [x] `POST /cameras/{id}/config` learns the `reorient_existing` form
+      field. Server computes `delta = (new_rotation - reported_rotation) mod 360`
+      and stores it in `pending_reorient_delta` only when both checkbox is
+      checked AND rotation actually changes (delta in {90, 180, 270})
+- [x] Heartbeat reconciliation: when apply succeeds (`reported == desired`,
+      desired cleared), if `pending_reorient_delta IS NOT NULL` schedule
+      `reorient_camera_photos(...)` via FastAPI `BackgroundTasks`. Apply
+      errors do NOT trigger reorient (delta stays for retry/cancel)
+- [x] Camera card: sky-blue sticker `↻ Reorienting N/M photo(s) by D°...`
+      while the job runs, `↻ Reorient queued (D°)` while waiting for ack
+- [x] Edit modal: row with the photo count, computed delta, and a
+      `reorient_existing` checkbox (default checked). Visibility wired
+      to the rotation `<select>` via inline JS; row stays hidden until
+      rotation actually differs from `reported_config.rotation`
+- [x] No new dependencies (Pillow + thumbnails module reused). No schema
+      migration (`pending_reorient_delta` was added in PR1's
+      `upgrade_to_v12`)
+- [x] 16 new server tests (7 reorient module + 3 config flag + 3
+      heartbeat trigger + 2 card sticker + 1 modal). 132 server tests
+      total. Ruff clean.
+
 ---
 
 ## Future (V2+)
