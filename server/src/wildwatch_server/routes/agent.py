@@ -46,6 +46,27 @@ async def heartbeat(
     if not isinstance(parsed, dict):
         raise HTTPException(status_code=400, detail="status must be a JSON object")
 
+    # --- Reconcile desired_config vs reported_config ---
+    desired = (
+        json.loads(cam.desired_config) if cam.desired_config else None
+    )
+    applied_at = parsed.get("applied_at")
+    reported = parsed.get("reported_config") or {}
+
+    apply_error_observed = False
+    if desired is not None and applied_at:
+        # Agent claims it applied. Did it actually take effect?
+        if all(reported.get(k) == v for k, v in desired.items()):
+            # Success: clear desired
+            cam.desired_config = None
+            desired = None
+        else:
+            apply_error_observed = True
+
+    # Inject the apply error flag into the stored heartbeat so the UI can render it.
+    parsed.setdefault("capture", {})
+    parsed["capture"]["apply_error_observed"] = apply_error_observed
+
     cam.last_heartbeat = json.dumps(parsed, separators=(",", ":"))
     cam.agent_last_seen_at = datetime.now(timezone.utc)
     session.add(cam)
@@ -58,4 +79,4 @@ async def heartbeat(
             tmp = target.with_suffix(".jpg.tmp")
             tmp.write_bytes(contents)
             tmp.replace(target)
-    return {"desired_config": None, "commands": []}
+    return {"desired_config": desired, "commands": []}

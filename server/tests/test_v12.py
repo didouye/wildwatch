@@ -308,3 +308,96 @@ def test_update_modal_does_not_double_dot_local_when_hostname_already_qualified(
     res = client.get("/cameras")
     assert "dietpi@dietpi.local" in res.text
     assert "dietpi.local.local" not in res.text  # the bug we are guarding against
+
+
+def test_heartbeat_returns_desired_config_when_pending(client: TestClient) -> None:
+    cam = _enroll(client)
+    _approve(client, cam["id"])
+    # Operator pre-sets a desired_config via the DB directly (POST /cameras/{id}/config
+    # is implemented in Task 2 -- skip the route here).
+    from wildwatch_server.db import get_engine
+    from sqlmodel import Session as SM
+    with SM(get_engine()) as s:
+        row = s.get(Camera, cam["id"])
+        row.desired_config = json.dumps({"rotation": 180})
+        s.add(row)
+        s.commit()
+
+    res = _heartbeat(client, cam["token"], {"agent": {"version": "1.2.0"}})
+    assert res.status_code == 200
+    body = res.json()
+    assert body["desired_config"] == {"rotation": 180}
+    assert body["commands"] == []
+
+
+def test_heartbeat_clears_desired_when_applied_and_reported_matches(client: TestClient) -> None:
+    cam = _enroll(client)
+    _approve(client, cam["id"])
+    from wildwatch_server.db import get_engine
+    from sqlmodel import Session as SM
+    with SM(get_engine()) as s:
+        s.get(Camera, cam["id"]).desired_config = json.dumps({"rotation": 180, "capture_width": 2304})
+        s.commit()
+
+    payload = {
+        "agent": {"version": "1.2.0", "uptime_s": 5},
+        "applied_at": "2026-05-06T00:00:00+00:00",
+        "reported_config": {"rotation": 180, "capture_width": 2304},
+    }
+    res = _heartbeat(client, cam["token"], payload)
+    assert res.status_code == 200
+    assert res.json()["desired_config"] is None  # cleared on this very tick
+
+    with SM(get_engine()) as s:
+        assert s.get(Camera, cam["id"]).desired_config is None
+
+
+def test_heartbeat_keeps_desired_and_flags_error_when_applied_but_mismatch(
+    client: TestClient,
+) -> None:
+    cam = _enroll(client)
+    _approve(client, cam["id"])
+    from wildwatch_server.db import get_engine
+    from sqlmodel import Session as SM
+    with SM(get_engine()) as s:
+        s.get(Camera, cam["id"]).desired_config = json.dumps({"rotation": 180})
+        s.commit()
+
+    payload = {
+        "agent": {"version": "1.2.0", "uptime_s": 5},
+        "applied_at": "2026-05-06T00:00:00+00:00",
+        "reported_config": {"rotation": 0},  # capture is still on the OLD config
+    }
+    res = _heartbeat(client, cam["token"], payload)
+    assert res.status_code == 200
+    assert res.json()["desired_config"] == {"rotation": 180}  # still pending
+
+    with SM(get_engine()) as s:
+        row = s.get(Camera, cam["id"])
+        assert row.desired_config is not None
+        stored = json.loads(row.last_heartbeat)
+        assert stored["capture"]["apply_error_observed"] is True
+
+
+def test_heartbeat_no_applied_at_keeps_desired_no_error_flag(client: TestClient) -> None:
+    cam = _enroll(client)
+    _approve(client, cam["id"])
+    from wildwatch_server.db import get_engine
+    from sqlmodel import Session as SM
+    with SM(get_engine()) as s:
+        s.get(Camera, cam["id"]).desired_config = json.dumps({"rotation": 180})
+        s.commit()
+
+    payload = {
+        "agent": {"version": "1.2.0"},
+        "reported_config": {"rotation": 0},
+        # applied_at omitted -- agent hasn't applied yet (first time receiving desired)
+    }
+    res = _heartbeat(client, cam["token"], payload)
+    assert res.json()["desired_config"] == {"rotation": 180}
+    with SM(get_engine()) as s:
+        row = s.get(Camera, cam["id"])
+        assert row.desired_config is not None  # still pending
+        # Don't flag error: agent is still in the process of applying.
+        stored = json.loads(row.last_heartbeat)
+        assert stored.get("capture", {}).get("apply_error_observed", False) is False
