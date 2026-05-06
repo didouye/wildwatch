@@ -18,6 +18,7 @@ from wildwatch_server.db import get_session
 from wildwatch_server.models import Camera, Photo, PhotoTagLink, Tag
 from wildwatch_server.routes.photos import _delete_photo_assets, set_photo_tags
 from wildwatch_server.storage import photos_dir, previews_dir
+from wildwatch_server.versions import LATEST_AGENT_VERSION
 
 router = APIRouter(dependencies=[Depends(require_web_session)])
 
@@ -373,6 +374,14 @@ def _camera_card_context(cam: Camera, session: Session) -> dict:
         and (capture_block.get("status_age_s") or 999) < 30
     )
 
+    reported_version = (hb.get("agent") or {}).get("version")
+    if reported_version is None:
+        agent_status = "none"
+    elif reported_version != LATEST_AGENT_VERSION:
+        agent_status = "outdated"
+    else:
+        agent_status = "current"
+
     return {
         "cam": cam,
         "hb": hb,
@@ -380,6 +389,9 @@ def _camera_card_context(cam: Camera, session: Session) -> dict:
         "agent_age_s": agent_age_s,
         "capture_online": capture_online,
         "photo_count": _photo_count(session, cam),
+        "agent_status": agent_status,
+        "reported_agent_version": reported_version,
+        "latest_agent_version": LATEST_AGENT_VERSION,
     }
 
 

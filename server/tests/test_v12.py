@@ -243,3 +243,33 @@ def test_latest_agent_version_constant_exists() -> None:
     # Sanity: x.y.z, three integer parts.
     parts = LATEST_AGENT_VERSION.split(".")
     assert len(parts) == 3 and all(p.isdigit() for p in parts)
+
+
+def test_card_context_agent_status_none_when_no_heartbeat(client: TestClient) -> None:
+    cam = _enroll(client)
+    _approve(client, cam["id"])
+    res = client.get(f"/cameras/{cam['id']}/card")
+    assert res.status_code == 200
+    assert "Install agent" in res.text  # CTA visible
+    assert "Update available" not in res.text
+
+
+def test_card_context_agent_status_current(client: TestClient) -> None:
+    cam = _enroll(client)
+    _approve(client, cam["id"])
+    _heartbeat(client, cam["token"], {"agent": {"version": "1.2.0", "uptime_s": 5}})
+    res = client.get(f"/cameras/{cam['id']}/card")
+    assert res.status_code == 200
+    assert "up to date" in res.text.lower() or "✓" in res.text
+    assert "Install agent" not in res.text
+    assert "Update available" not in res.text
+
+
+def test_card_context_agent_status_outdated(client: TestClient) -> None:
+    cam = _enroll(client)
+    _approve(client, cam["id"])
+    _heartbeat(client, cam["token"], {"agent": {"version": "0.9.0", "uptime_s": 5}})
+    res = client.get(f"/cameras/{cam['id']}/card")
+    assert res.status_code == 200
+    assert "Update available" in res.text
+    assert "0.9.0" in res.text and "1.2.0" in res.text

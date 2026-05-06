@@ -56,7 +56,28 @@
         <div class="italic text-slate-500">Waiting for first heartbeat...</div>
       {% endif %}
       {% if hb.agent %}
-        <div class="text-slate-500">Agent v{{ hb.agent.version }} &middot; uptime {{ hb.agent.uptime_s }}s</div>
+        <div class="text-slate-500 flex items-center gap-2">
+          <span>Agent v{{ hb.agent.version }} &middot; uptime {{ hb.agent.uptime_s }}s</span>
+          {% if agent_status == "current" %}
+            <span class="text-emerald-300" title="Up to date">&check;</span>
+          {% elif agent_status == "outdated" %}
+            <span class="text-amber-300">&uarr; Update available &rarr; {{ latest_agent_version }}</span>
+            <button
+              type="button"
+              class="text-amber-200 underline hover:text-amber-100"
+              onclick="document.getElementById('update-camera-modal-{{ cam.id }}').classList.remove('hidden')"
+            >Update camera</button>
+          {% endif %}
+        </div>
+      {% else %}
+        <div class="text-amber-300 flex items-center gap-2">
+          <span>No agent reporting yet.</span>
+          <button
+            type="button"
+            class="underline hover:text-amber-100"
+            onclick="document.getElementById('update-camera-modal-{{ cam.id }}').classList.remove('hidden')"
+          >Install agent</button>
+        </div>
       {% endif %}
     </div>
   </div>
@@ -76,4 +97,8 @@
       <button class="text-rose-400 hover:text-rose-300">Revoke</button>
     </form>
   </div>
+
+  {% if agent_status != "current" %}
+    {% include '_update_camera_modal.html' ignore missing %}
+  {% endif %}
 </li>
