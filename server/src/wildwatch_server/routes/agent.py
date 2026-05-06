@@ -5,9 +5,10 @@ from __future__ import annotations
 import json
 from datetime import datetime, timezone
 
-from fastapi import APIRouter, Depends, File, Form, Header, HTTPException, Request, Response, UploadFile
+from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, Header, HTTPException, Request, Response, UploadFile
 from sqlmodel import Session, select
 
+from wildwatch_server import reorient
 from wildwatch_server.db import get_session
 from wildwatch_server.models import Camera
 from wildwatch_server.rate_limit import HEARTBEAT_LIMIT, limiter
@@ -33,6 +34,7 @@ def _camera_from_authz(session: Session, authorization: str | None) -> Camera:
 async def heartbeat(
     request: Request,
     response: Response,
+    background_tasks: BackgroundTasks,
     status: str = Form(...),
     preview: UploadFile | None = File(default=None),
     authorization: str | None = Header(default=None),
@@ -54,6 +56,8 @@ async def heartbeat(
     reported = parsed.get("reported_config") or {}
 
     apply_error_observed = False
+    reorient_delta_to_run: int | None = None
+    ack_time = datetime.now(timezone.utc)
     # Use truthiness check (not `is not None`) so an empty dict doesn't trigger
     # vacuous-truth success (`all(... for _ in {}) == True`).
     if desired and applied_at:
@@ -62,6 +66,9 @@ async def heartbeat(
             # Success: clear desired
             cam.desired_config = None
             desired = None
+            # If a reorient was queued, capture the delta to schedule.
+            if cam.pending_reorient_delta is not None:
+                reorient_delta_to_run = cam.pending_reorient_delta
         else:
             apply_error_observed = True
 
@@ -73,6 +80,14 @@ async def heartbeat(
     cam.agent_last_seen_at = datetime.now(timezone.utc)
     session.add(cam)
     session.commit()
+
+    if reorient_delta_to_run is not None:
+        background_tasks.add_task(
+            reorient.reorient_camera_photos,
+            camera_id=cam.id,
+            delta=reorient_delta_to_run,
+            ack_time=ack_time,
+        )
 
     if preview is not None:
         contents = await preview.read()

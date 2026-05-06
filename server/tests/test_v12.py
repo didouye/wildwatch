@@ -719,3 +719,90 @@ def test_post_config_without_reorient_flag_skips_delta(client: TestClient) -> No
         assert row.pending_reorient_delta is None
         # desired_config still set for the rotation change
         assert json.loads(row.desired_config) == {"rotation": 180}
+
+
+def test_heartbeat_schedules_reorient_when_apply_succeeds_with_delta(
+    client: TestClient, tmp_path: Path
+) -> None:
+    cam = _enroll(client)
+    _approve(client, cam["id"])
+    # Pre-set desired + pending_reorient_delta as Task 2 would.
+    from wildwatch_server.db import get_engine
+    from sqlmodel import Session as SM
+    with SM(get_engine()) as s:
+        row = s.get(Camera, cam["id"])
+        row.desired_config = json.dumps({"rotation": 180})
+        row.pending_reorient_delta = 180
+        s.commit()
+
+    # Heartbeat with applied_at + reported matching desired -> server clears
+    # desired AND should schedule the reorient BG task.
+    from unittest.mock import patch
+    with patch("wildwatch_server.routes.agent.reorient.reorient_camera_photos") as mock_job:
+        payload = {
+            "agent": {"version": "1.2.0"},
+            "applied_at": "2026-05-06T00:00:00+00:00",
+            "reported_config": {"rotation": 180},
+        }
+        res = _heartbeat(client, cam["token"], payload)
+    assert res.status_code == 200
+
+    # The mock should have been queued as a BG task and executed.
+    mock_job.assert_called_once()
+    args, kwargs = mock_job.call_args
+    # camera_id passed as kwarg or positional; assert delta + ack_time present
+    call_camera_id = kwargs.get("camera_id", args[0] if args else None)
+    call_delta = kwargs.get("delta", args[1] if len(args) > 1 else None)
+    assert call_camera_id == cam["id"]
+    assert call_delta == 180
+
+
+def test_heartbeat_does_not_schedule_reorient_when_no_delta(client: TestClient) -> None:
+    cam = _enroll(client)
+    _approve(client, cam["id"])
+    from wildwatch_server.db import get_engine
+    from sqlmodel import Session as SM
+    with SM(get_engine()) as s:
+        row = s.get(Camera, cam["id"])
+        row.desired_config = json.dumps({"capture_width": 1536})  # no rotation change
+        # no pending_reorient_delta
+        s.commit()
+
+    from unittest.mock import patch
+    with patch("wildwatch_server.routes.agent.reorient.reorient_camera_photos") as mock_job:
+        payload = {
+            "agent": {"version": "1.2.0"},
+            "applied_at": "2026-05-06T00:00:00+00:00",
+            "reported_config": {"capture_width": 1536},
+        }
+        _heartbeat(client, cam["token"], payload)
+
+    mock_job.assert_not_called()
+
+
+def test_heartbeat_does_not_schedule_reorient_on_apply_error(client: TestClient) -> None:
+    cam = _enroll(client)
+    _approve(client, cam["id"])
+    from wildwatch_server.db import get_engine
+    from sqlmodel import Session as SM
+    with SM(get_engine()) as s:
+        row = s.get(Camera, cam["id"])
+        row.desired_config = json.dumps({"rotation": 180})
+        row.pending_reorient_delta = 180
+        s.commit()
+
+    from unittest.mock import patch
+    with patch("wildwatch_server.routes.agent.reorient.reorient_camera_photos") as mock_job:
+        payload = {
+            "agent": {"version": "1.2.0"},
+            "applied_at": "2026-05-06T00:00:00+00:00",
+            "reported_config": {"rotation": 0},  # MISMATCH -> apply_error
+        }
+        _heartbeat(client, cam["token"], payload)
+
+    # Apply error -> desired stays, pending_reorient_delta stays, NO bg task.
+    mock_job.assert_not_called()
+    with SM(get_engine()) as s:
+        row = s.get(Camera, cam["id"])
+        assert row.desired_config is not None
+        assert row.pending_reorient_delta == 180
