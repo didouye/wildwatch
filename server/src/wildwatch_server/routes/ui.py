@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import secrets
 from datetime import date, datetime, timezone
 from pathlib import Path
@@ -356,9 +357,6 @@ def _photo_count(session: Session, cam: Camera) -> int:
 
 def _camera_card_context(cam: Camera, session: Session) -> dict:
     """Compute fields the card template needs (parses last_heartbeat)."""
-    import json
-    from datetime import datetime, timezone
-
     hb = json.loads(cam.last_heartbeat) if cam.last_heartbeat else {}
     now = datetime.now(timezone.utc)
     agent_seen = cam.agent_last_seen_at
@@ -382,6 +380,16 @@ def _camera_card_context(cam: Camera, session: Session) -> dict:
     else:
         agent_status = "current"
 
+    desired = json.loads(cam.desired_config) if cam.desired_config else None
+    apply_error = bool(capture_block.get("apply_error_observed"))
+    config_diff = None
+    if desired:
+        reported = hb.get("reported_config") or {}
+        config_diff = [
+            {"field": k, "from": reported.get(k, "?"), "to": v}
+            for k, v in desired.items()
+        ]
+
     return {
         "cam": cam,
         "hb": hb,
@@ -392,6 +400,9 @@ def _camera_card_context(cam: Camera, session: Session) -> dict:
         "agent_status": agent_status,
         "reported_agent_version": reported_version,
         "latest_agent_version": LATEST_AGENT_VERSION,
+        "desired_config": desired,
+        "config_diff": config_diff,
+        "apply_error_observed": apply_error,
     }
 
 
@@ -402,6 +413,94 @@ def camera_card(
     cam = session.get(Camera, camera_id)
     if cam is None:
         raise HTTPException(status_code=404)
+    return templates.TemplateResponse(
+        request=request,
+        name="_camera_card.html",
+        context=_camera_card_context(cam, session),
+    )
+
+
+# Allowed fields and their casts (form values arrive as strings).
+_CONFIG_FIELDS = {
+    "rotation": int,
+    "capture_width": int,
+    "capture_height": int,
+    "detection_width": int,
+    "detection_height": int,
+    "pixel_threshold": int,
+    "area_threshold": float,
+    "background_alpha": float,
+    "warmup_frames": int,
+    "cooldown_seconds": float,
+    "burst_count": int,
+    "burst_interval_seconds": float,
+}
+
+
+def _validate_config_form(form: dict) -> dict:
+    """Cast form values to the right types and validate ranges."""
+    parsed: dict = {}
+    for name, caster in _CONFIG_FIELDS.items():
+        raw = form.get(name)
+        if raw is None or raw == "":
+            raise HTTPException(status_code=400, detail=f"Missing field: {name}")
+        try:
+            parsed[name] = caster(raw)
+        except (ValueError, TypeError) as exc:
+            raise HTTPException(
+                status_code=400, detail=f"Invalid value for {name}: {raw}"
+            ) from exc
+
+    # Range checks
+    if parsed["rotation"] not in {0, 90, 180, 270}:
+        raise HTTPException(status_code=400, detail="rotation must be 0, 90, 180, or 270")
+    if parsed["capture_width"] <= 0 or parsed["capture_height"] <= 0:
+        raise HTTPException(status_code=400, detail="capture dimensions must be positive")
+    if parsed["detection_width"] <= 0 or parsed["detection_height"] <= 0:
+        raise HTTPException(status_code=400, detail="detection dimensions must be positive")
+    if not (0 < parsed["area_threshold"] <= 1):
+        raise HTTPException(status_code=400, detail="area_threshold must be in (0, 1]")
+    if not (0 < parsed["background_alpha"] <= 1):
+        raise HTTPException(status_code=400, detail="background_alpha must be in (0, 1]")
+    if parsed["burst_count"] < 1:
+        raise HTTPException(status_code=400, detail="burst_count must be >= 1")
+    return parsed
+
+
+def _diff_against_reported(submitted: dict, reported: dict | None) -> dict:
+    """Return only the fields where submitted differs from reported.
+
+    Fields not present in `reported` are skipped (we have nothing to diff
+    against), so they don't get pushed as a "change". If `reported` is
+    entirely missing, treat all submitted fields as changed."""
+    if reported is None:
+        return submitted
+    return {k: v for k, v in submitted.items() if k in reported and reported[k] != v}
+
+
+@router.post("/cameras/{camera_id}/config", response_class=HTMLResponse)
+async def post_camera_config(
+    camera_id: int,
+    request: Request,
+    session: Session = Depends(get_session),
+) -> HTMLResponse:
+    cam = session.get(Camera, camera_id)
+    if cam is None:
+        raise HTTPException(status_code=404, detail="Camera not found")
+
+    form = await request.form()
+    submitted = _validate_config_form(form)
+
+    hb = json.loads(cam.last_heartbeat) if cam.last_heartbeat else {}
+    reported = (hb.get("reported_config") or {}) if hb else {}
+    diff = _diff_against_reported(submitted, reported)
+
+    cam.desired_config = json.dumps(diff) if diff else None
+    session.add(cam)
+    session.commit()
+    session.refresh(cam)
+
+    # Return the freshly-rendered card fragment for htmx swap.
     return templates.TemplateResponse(
         request=request,
         name="_camera_card.html",

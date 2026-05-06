@@ -92,6 +92,42 @@
     </p>
   {% endif %}
 
+  {% if config_diff %}
+    {% if apply_error_observed %}
+      <div class="rounded border border-rose-700 bg-rose-950/40 p-2 space-y-1 text-xs">
+        <p class="text-rose-200">&times; Last apply attempt failed.</p>
+        <p class="text-slate-400">
+          The new config was written but capture didn't pick it up (likely an
+          invalid value -- check the camera's logs).
+        </p>
+        <ul class="text-slate-300">
+          {% for d in config_diff %}
+            <li><code>{{ d.field }}</code>: {{ d.from }} &rarr; {{ d.to }}</li>
+          {% endfor %}
+        </ul>
+        <form method="post" action="/cameras/{{ cam.id }}/config/cancel"
+              hx-post="/cameras/{{ cam.id }}/config/cancel"
+              hx-target="#camera-card-{{ cam.id }}" hx-swap="outerHTML">
+          <button class="text-rose-200 hover:text-rose-100 underline">Cancel update</button>
+        </form>
+      </div>
+    {% else %}
+      <div class="rounded border border-amber-700 bg-amber-950/40 p-2 space-y-1 text-xs">
+        <p class="text-amber-200">&uarr; Update pending -- waiting for agent.</p>
+        <ul class="text-slate-300">
+          {% for d in config_diff %}
+            <li><code>{{ d.field }}</code>: {{ d.from }} &rarr; {{ d.to }}</li>
+          {% endfor %}
+        </ul>
+        <form method="post" action="/cameras/{{ cam.id }}/config/cancel"
+              hx-post="/cameras/{{ cam.id }}/config/cancel"
+              hx-target="#camera-card-{{ cam.id }}" hx-swap="outerHTML">
+          <button class="text-amber-200 hover:text-amber-100 underline">Cancel update</button>
+        </form>
+      </div>
+    {% endif %}
+  {% endif %}
+
   <div class="flex gap-3 text-xs">
     <a href="/gallery?camera_id={{ cam.id }}" class="text-emerald-300 hover:text-emerald-200">See photos &rarr;</a>
     <form method="post" action="/cameras/{{ cam.id }}/revoke" onsubmit="return confirm('Revoke this camera?');">

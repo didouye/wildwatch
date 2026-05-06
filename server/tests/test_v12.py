@@ -401,3 +401,79 @@ def test_heartbeat_no_applied_at_keeps_desired_no_error_flag(client: TestClient)
         # Don't flag error: agent is still in the process of applying.
         stored = json.loads(row.last_heartbeat)
         assert stored.get("capture", {}).get("apply_error_observed", False) is False
+
+
+def test_post_camera_config_sets_minimal_diff(client: TestClient) -> None:
+    cam = _enroll(client)
+    _approve(client, cam["id"])
+    # Reported config: rotation=0, capture=2304x1296. Operator wants rotation=180, capture stays.
+    payload = {
+        "agent": {"version": "1.2.0"},
+        "reported_config": {"rotation": 0, "capture_width": 2304, "capture_height": 1296},
+    }
+    _heartbeat(client, cam["token"], payload)
+
+    res = client.post(
+        f"/cameras/{cam['id']}/config",
+        data={"rotation": "180", "capture_width": "2304", "capture_height": "1296",
+              "detection_width": "640", "detection_height": "480",
+              "pixel_threshold": "25", "area_threshold": "0.02",
+              "background_alpha": "0.05", "warmup_frames": "30",
+              "cooldown_seconds": "5.0", "burst_count": "3",
+              "burst_interval_seconds": "0.5"},
+    )
+    assert res.status_code == 200, res.text
+    # Returns the card fragment
+    assert "Update pending" in res.text
+    assert "rotation" in res.text and "180" in res.text
+
+    # DB: desired_config holds ONLY the changed field
+    from wildwatch_server.db import get_engine
+    from sqlmodel import Session as SM
+    with SM(get_engine()) as s:
+        row = s.get(Camera, cam["id"])
+        assert row.desired_config is not None
+        stored = json.loads(row.desired_config)
+        assert stored == {"rotation": 180}  # capture_width unchanged → not in diff
+
+
+def test_post_camera_config_no_diff_clears_pending(client: TestClient) -> None:
+    cam = _enroll(client)
+    _approve(client, cam["id"])
+    payload = {
+        "agent": {"version": "1.2.0"},
+        "reported_config": {"rotation": 180, "capture_width": 2304, "capture_height": 1296},
+    }
+    _heartbeat(client, cam["token"], payload)
+
+    res = client.post(
+        f"/cameras/{cam['id']}/config",
+        data={"rotation": "180", "capture_width": "2304", "capture_height": "1296",
+              "detection_width": "640", "detection_height": "480",
+              "pixel_threshold": "25", "area_threshold": "0.02",
+              "background_alpha": "0.05", "warmup_frames": "30",
+              "cooldown_seconds": "5.0", "burst_count": "3",
+              "burst_interval_seconds": "0.5"},
+    )
+    assert res.status_code == 200
+    # No diff = no pending desired_config
+    from wildwatch_server.db import get_engine
+    from sqlmodel import Session as SM
+    with SM(get_engine()) as s:
+        assert s.get(Camera, cam["id"]).desired_config is None
+
+
+def test_post_camera_config_validates_rotation(client: TestClient) -> None:
+    cam = _enroll(client)
+    _approve(client, cam["id"])
+    res = client.post(
+        f"/cameras/{cam['id']}/config",
+        data={"rotation": "45", "capture_width": "2304", "capture_height": "1296",
+              "detection_width": "640", "detection_height": "480",
+              "pixel_threshold": "25", "area_threshold": "0.02",
+              "background_alpha": "0.05", "warmup_frames": "30",
+              "cooldown_seconds": "5.0", "burst_count": "3",
+              "burst_interval_seconds": "0.5"},
+    )
+    assert res.status_code == 400  # invalid rotation
+    assert "rotation" in res.text.lower()
