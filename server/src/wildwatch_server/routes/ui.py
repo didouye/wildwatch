@@ -458,22 +458,37 @@ def _validate_config_form(form: dict) -> dict:
         raise HTTPException(status_code=400, detail="capture dimensions must be positive")
     if parsed["detection_width"] <= 0 or parsed["detection_height"] <= 0:
         raise HTTPException(status_code=400, detail="detection dimensions must be positive")
+    for dim in ("capture_width", "capture_height", "detection_width", "detection_height"):
+        if parsed[dim] > 8192:
+            raise HTTPException(status_code=400, detail=f"{dim} must be <= 8192")
+    if parsed["pixel_threshold"] < 0 or parsed["pixel_threshold"] > 255:
+        raise HTTPException(status_code=400, detail="pixel_threshold must be in [0, 255]")
     if not (0 < parsed["area_threshold"] <= 1):
         raise HTTPException(status_code=400, detail="area_threshold must be in (0, 1]")
     if not (0 < parsed["background_alpha"] <= 1):
         raise HTTPException(status_code=400, detail="background_alpha must be in (0, 1]")
+    if parsed["warmup_frames"] < 0:
+        raise HTTPException(status_code=400, detail="warmup_frames must be >= 0")
+    if parsed["cooldown_seconds"] < 0:
+        raise HTTPException(status_code=400, detail="cooldown_seconds must be >= 0")
     if parsed["burst_count"] < 1:
         raise HTTPException(status_code=400, detail="burst_count must be >= 1")
+    if parsed["burst_interval_seconds"] < 0:
+        raise HTTPException(status_code=400, detail="burst_interval_seconds must be >= 0")
     return parsed
 
 
 def _diff_against_reported(submitted: dict, reported: dict | None) -> dict:
     """Return only the fields where submitted differs from reported.
 
-    Fields not present in `reported` are skipped (we have nothing to diff
-    against), so they don't get pushed as a "change". If `reported` is
-    entirely missing, treat all submitted fields as changed."""
-    if reported is None:
+    Empty or missing `reported` -> all submitted fields are considered
+    changed (returned as-is). This matters for fresh cameras that haven't
+    sent a heartbeat yet: we want the operator's first config submission
+    to populate every field into desired_config, not silently drop them.
+
+    For non-empty `reported`, fields not present in `reported` are skipped
+    (we have nothing to diff against)."""
+    if not reported:
         return submitted
     return {k: v for k, v in submitted.items() if k in reported and reported[k] != v}
 

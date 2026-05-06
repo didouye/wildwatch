@@ -477,3 +477,41 @@ def test_post_camera_config_validates_rotation(client: TestClient) -> None:
     )
     assert res.status_code == 400  # invalid rotation
     assert "rotation" in res.text.lower()
+
+
+def test_post_camera_config_rejects_negative_warmup_frames(client: TestClient) -> None:
+    cam = _enroll(client)
+    _approve(client, cam["id"])
+    data = {"rotation": "0", "capture_width": "2304", "capture_height": "1296",
+            "detection_width": "640", "detection_height": "480",
+            "pixel_threshold": "25", "area_threshold": "0.02",
+            "background_alpha": "0.05", "warmup_frames": "-1",
+            "cooldown_seconds": "5.0", "burst_count": "3",
+            "burst_interval_seconds": "0.5"}
+    res = client.post(f"/cameras/{cam['id']}/config", data=data)
+    assert res.status_code == 400
+    assert "warmup_frames" in res.text
+
+
+def test_post_camera_config_fresh_camera_no_reported_yet_stores_all_fields(client: TestClient) -> None:
+    """When reported_config is missing entirely (no heartbeat yet), the form
+    submission populates all 12 fields into desired_config."""
+    cam = _enroll(client)
+    _approve(client, cam["id"])
+    # No heartbeat yet -> reported_config is None.
+    data = {"rotation": "0", "capture_width": "2304", "capture_height": "1296",
+            "detection_width": "640", "detection_height": "480",
+            "pixel_threshold": "25", "area_threshold": "0.02",
+            "background_alpha": "0.05", "warmup_frames": "30",
+            "cooldown_seconds": "5.0", "burst_count": "3",
+            "burst_interval_seconds": "0.5"}
+    res = client.post(f"/cameras/{cam['id']}/config", data=data)
+    assert res.status_code == 200, res.text
+    from wildwatch_server.db import get_engine
+    from sqlmodel import Session as SM
+    with SM(get_engine()) as s:
+        row = s.get(Camera, cam["id"])
+        assert row.desired_config is not None
+        import json as _json
+        stored = _json.loads(row.desired_config)
+        assert len(stored) == 12  # all 12 fields stored when fresh
