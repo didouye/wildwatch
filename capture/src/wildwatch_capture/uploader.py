@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 import shutil
 import time
 from datetime import datetime, timedelta, timezone
@@ -14,6 +15,24 @@ import httpx
 from wildwatch_capture.config import UploadConfig
 
 log = logging.getLogger(__name__)
+
+
+class _CorruptQueueItem(Exception):
+    """A queued photo or its metadata is unusable (empty bytes, invalid JSON).
+
+    Raised by `_upload_one` so `flush` can move the item to dead/ instead of
+    crashing the loop. Typical cause: enqueue interrupted by a power cut or
+    abrupt reboot before the SD card flushed pending writes.
+    """
+
+
+def _fsync_path(path: Path) -> None:
+    """fsync a file or directory so its bytes/dirents reach the SD card."""
+    fd = os.open(str(path), os.O_RDONLY)
+    try:
+        os.fsync(fd)
+    finally:
+        os.close(fd)
 
 
 class Uploader:
@@ -61,6 +80,12 @@ class Uploader:
             metadata.update(extra_metadata)
         meta_path = target.with_suffix(target.suffix + ".meta.json")
         meta_path.write_text(json.dumps(metadata, sort_keys=True))
+        # Force JPG bytes, meta bytes, and the directory entries to disk so
+        # an abrupt reboot cannot leave 0-byte files behind that would later
+        # crash the upload loop.
+        _fsync_path(target)
+        _fsync_path(meta_path)
+        _fsync_path(self.queue_dir)
         log.info("Queued %s", target)
         return target
 
@@ -80,6 +105,9 @@ class Uploader:
                 self._upload_one(photo)
                 self._move_to_sent(photo)
                 sent += 1
+            except _CorruptQueueItem as exc:
+                log.error("Corrupt queue item, moving to dead-letter: %s", exc)
+                self._move_to_dead(photo)
             except httpx.HTTPStatusError as exc:
                 if exc.response.status_code in self.TRANSIENT_STATUS:
                     log.warning(
@@ -113,12 +141,20 @@ class Uploader:
         return deleted
 
     def _upload_one(self, photo: Path) -> None:
+        if photo.stat().st_size == 0:
+            raise _CorruptQueueItem(f"empty JPG: {photo.name}")
+
         meta_path = photo.with_suffix(photo.suffix + ".meta.json")
         captured_at = ""
         metadata_str: str | None = None
         if meta_path.exists():
             metadata_str = meta_path.read_text()
-            captured_at = json.loads(metadata_str).get("captured_at", "")
+            if not metadata_str.strip():
+                raise _CorruptQueueItem(f"empty meta: {meta_path.name}")
+            try:
+                captured_at = json.loads(metadata_str).get("captured_at", "")
+            except json.JSONDecodeError as exc:
+                raise _CorruptQueueItem(f"invalid meta JSON: {meta_path.name}") from exc
 
         url = f"{self._cfg.server_url.rstrip('/')}/api/photos"
         headers: dict[str, str] = {}

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import os
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from unittest.mock import patch
@@ -125,6 +126,95 @@ def test_flush_throttled_by_retry_interval(config: UploadConfig) -> None:
         # After expiry, the third flush would attempt again (queue empty here)
         uploader.flush(now=140.0)
         assert mock.call_count == 1  # no photo left to send, but we did try
+
+
+def test_flush_empty_meta_moves_to_dead_letter(config: UploadConfig) -> None:
+    """A truncated meta.json (e.g. enqueue interrupted by reboot before fsync)
+    must not crash the loop -- move the item to dead/ and keep going."""
+    uploader = Uploader(config)
+    photo = uploader.queue_dir / "corrupt.jpg"
+    photo.write_bytes(b"\xff\xd8\xff\xe0fake")
+    photo.with_suffix(photo.suffix + ".meta.json").write_text("")  # empty, invalid JSON
+
+    sent = uploader.flush(now=100.0)
+    assert sent == 0
+    assert not (uploader.queue_dir / "corrupt.jpg").exists()
+    assert (uploader.dead_dir / "corrupt.jpg").exists()
+    assert (uploader.dead_dir / "corrupt.jpg.meta.json").exists()
+
+
+def test_flush_invalid_json_meta_moves_to_dead_letter(config: UploadConfig) -> None:
+    """Half-written meta.json with invalid JSON should also go to dead/."""
+    uploader = Uploader(config)
+    photo = uploader.queue_dir / "halfwritten.jpg"
+    photo.write_bytes(b"\xff\xd8\xff\xe0fake")
+    photo.with_suffix(photo.suffix + ".meta.json").write_text('{"captured_at": "20')
+
+    sent = uploader.flush(now=100.0)
+    assert sent == 0
+    assert not (uploader.queue_dir / "halfwritten.jpg").exists()
+    assert (uploader.dead_dir / "halfwritten.jpg").exists()
+
+
+def test_flush_empty_jpg_moves_to_dead_letter(config: UploadConfig) -> None:
+    """A 0-byte JPG (write interrupted) is unusable: drop to dead/, don't upload."""
+    uploader = Uploader(config)
+    photo = uploader.queue_dir / "empty.jpg"
+    photo.write_bytes(b"")
+    meta = photo.with_suffix(photo.suffix + ".meta.json")
+    meta.write_text(json.dumps({"captured_at": "2026-05-06T12:00:00+00:00"}))
+
+    with patch("httpx.post") as mock_post:
+        sent = uploader.flush(now=100.0)
+    assert sent == 0
+    assert mock_post.call_count == 0  # never even attempted
+    assert not (uploader.queue_dir / "empty.jpg").exists()
+    assert (uploader.dead_dir / "empty.jpg").exists()
+
+
+def test_flush_continues_after_corrupt_item(config: UploadConfig) -> None:
+    """One corrupt item must not block subsequent valid items in the same flush."""
+    uploader = Uploader(config)
+    # First (alphabetically): corrupt
+    bad = uploader.queue_dir / "00bad.jpg"
+    bad.write_bytes(b"\xff\xd8\xff\xe0fake")
+    bad.with_suffix(bad.suffix + ".meta.json").write_text("")
+    # Second: valid
+    write_fake_photo(uploader, "01good.jpg", datetime.now(timezone.utc))
+
+    response = httpx.Response(
+        200, json={"stored_path": "ok"}, request=httpx.Request("POST", "http://x/api/photos")
+    )
+    with patch("httpx.post", return_value=response):
+        sent = uploader.flush(now=100.0)
+    assert sent == 1
+    assert (uploader.dead_dir / "00bad.jpg").exists()
+    assert (uploader.sent_dir / "01good.jpg").exists()
+
+
+def test_enqueue_fsyncs_jpg_meta_and_dir(
+    config: UploadConfig, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """enqueue() must fsync the JPG, the meta, and the queue dir so an abrupt
+    reboot cannot leave 0-byte files behind."""
+    fsync_calls: list[int] = []
+    real_fsync = os.fsync
+
+    def spy_fsync(fd: int) -> None:
+        fsync_calls.append(fd)
+        return real_fsync(fd)
+
+    monkeypatch.setattr(os, "fsync", spy_fsync)
+
+    src = tmp_path / "tmp_capture.jpg"
+    src.write_bytes(b"\xff\xd8\xff\xe0fakeJPEG")
+    uploader = Uploader(config)
+    target = uploader.enqueue(src, datetime(2026, 5, 4, 12, 0, 0, tzinfo=timezone.utc))
+
+    # JPG, meta, and parent dir each need at least one fsync.
+    assert len(fsync_calls) >= 3, f"expected >=3 fsync calls, got {len(fsync_calls)}"
+    assert target.exists()
+    assert target.with_suffix(target.suffix + ".meta.json").exists()
 
 
 def test_cleanup_old_sent(config: UploadConfig) -> None:
