@@ -383,6 +383,28 @@ def test_bulk_filtered_respects_favorite_filter(
 # =====================================================
 
 
+def test_gallery_accepts_empty_camera_id_filter(
+    client: TestClient, session: Session, tmp_path: Path
+) -> None:
+    """Regression: form submits camera_id="" when "Any" is selected; must not 422."""
+    _seed_photo(session, tmp_path)
+    res = client.get("/gallery?camera_id=&hostname=&from=&to=&tag=")
+    assert res.status_code == 200, res.text
+    assert "1 photo" in res.text
+
+
+def test_bulk_filtered_accepts_empty_camera_id(
+    client: TestClient, session: Session, tmp_path: Path
+) -> None:
+    _seed_photo(session, tmp_path)
+    res = client.post(
+        "/photos/bulk_filtered",
+        data={"confirm_count": 1, "camera_id": "", "hostname": ""},
+    )
+    assert res.status_code == 200, res.text
+    assert res.json() == {"deleted": 1}
+
+
 def test_gallery_shows_select_button_when_photos_exist(
     client: TestClient, session: Session, tmp_path: Path
 ) -> None:

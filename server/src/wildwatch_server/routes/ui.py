@@ -60,6 +60,20 @@ def _bool_param(value: str | None) -> bool:
     return value is not None and value.lower() in {"1", "true", "yes", "on"}
 
 
+def _optional_int(value: str | None, *, field: str) -> int | None:
+    """Parse a query/form field that may be missing OR an empty string.
+
+    The gallery filter form posts `camera_id=` when "Any" is picked; FastAPI's
+    `int | None` parser would 422 on the empty string, so we coerce it here.
+    """
+    if value is None or value == "":
+        return None
+    try:
+        return int(value)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=f"Invalid {field}: {value}") from exc
+
+
 def _apply_photo_filters(
     query,
     count_query,
@@ -107,7 +121,7 @@ def gallery(
     from_: str | None = Query(default=None, alias="from"),
     to: str | None = Query(default=None),
     hostname: str | None = Query(default=None),
-    camera_id: int | None = Query(default=None),
+    camera_id: str | None = Query(default=None),
     favorite: str | None = Query(default=None),
     tag: str | None = Query(default=None),
     session: Session = Depends(get_session),
@@ -115,6 +129,9 @@ def gallery(
     from_date = _parse_date(from_)
     to_date = _parse_date(to)
     favorite_only = _bool_param(favorite)
+    hostname = hostname or None
+    tag = tag or None
+    camera_id_int = _optional_int(camera_id, field="camera_id")
 
     query = select(Photo)
     count_query = select(func.count()).select_from(Photo)
@@ -124,7 +141,7 @@ def gallery(
         from_date=from_date,
         to_date=to_date,
         hostname=hostname,
-        camera_id=camera_id,
+        camera_id=camera_id_int,
         favorite_only=favorite_only,
         tag=tag,
     )
@@ -155,6 +172,8 @@ def gallery(
         base_qs["to"] = to
     if hostname:
         base_qs["hostname"] = hostname
+    if camera_id_int is not None:
+        base_qs["camera_id"] = camera_id_int
     if favorite_only:
         base_qs["favorite"] = "true"
     if tag:
@@ -178,7 +197,7 @@ def gallery(
             "from_": from_,
             "to": to,
             "hostname": hostname,
-            "camera_id": camera_id,
+            "camera_id": camera_id_int,
             "favorite": favorite_only,
             "tag": tag,
         },
@@ -372,7 +391,7 @@ def bulk_filtered_delete(
     from_: str | None = Form(default=None, alias="from"),
     to: str | None = Form(default=None),
     hostname: str | None = Form(default=None),
-    camera_id: int | None = Form(default=None),
+    camera_id: str | None = Form(default=None),
     favorite: str | None = Form(default=None),
     tag: str | None = Form(default=None),
     session: Session = Depends(get_session),
@@ -381,6 +400,9 @@ def bulk_filtered_delete(
     from_date = _parse_date(from_)
     to_date = _parse_date(to)
     favorite_only = _bool_param(favorite)
+    hostname = hostname or None
+    tag = tag or None
+    camera_id_int = _optional_int(camera_id, field="camera_id")
 
     query = select(Photo)
     count_query = select(func.count()).select_from(Photo)
@@ -390,7 +412,7 @@ def bulk_filtered_delete(
         from_date=from_date,
         to_date=to_date,
         hostname=hostname,
-        camera_id=camera_id,
+        camera_id=camera_id_int,
         favorite_only=favorite_only,
         tag=tag,
     )
