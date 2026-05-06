@@ -13,6 +13,7 @@ set -euo pipefail
 REPO_URL="${WILDWATCH_REPO:-https://github.com/didouye/wildwatch.git}"
 SRC_DIR="${WILDWATCH_SRC:-$HOME/wildwatch-src}"
 CONFIG_DIR="${WILDWATCH_CONFIG_DIR:-$HOME/wildwatch}"
+UV_BIN="${UV_BIN:-$HOME/.local/bin/uv}"
 
 echo "==> WildWatch update"
 echo "    Repo : $REPO_URL"
@@ -28,15 +29,19 @@ if [[ ! -f "$CONFIG_DIR/config.toml" ]]; then
     echo "error: $CONFIG_DIR/config.toml not found. Use setup.sh for a fresh install." >&2
     exit 1
 fi
+if [[ ! -x "$UV_BIN" ]]; then
+    echo "error: uv not found at $UV_BIN. Run setup.sh first to install uv." >&2
+    exit 1
+fi
 
 echo "==> Step 1/6: pulling latest code"
 ( cd "$SRC_DIR" && git fetch --all --prune && git reset --hard origin/main )
 
 echo "==> Step 2/6: refreshing capture venv"
-( cd "$SRC_DIR/capture" && uv sync )
+( cd "$SRC_DIR/capture" && "$UV_BIN" sync --no-dev --active )
 
 echo "==> Step 3/6: building/refreshing agent venv"
-( cd "$SRC_DIR/agent" && uv sync )
+( cd "$SRC_DIR/agent" && "$UV_BIN" sync --no-dev --active )
 
 echo "==> Step 4/6: refreshing tmpfiles.d + sudoers"
 sudo cp "$SRC_DIR/_recovery/wildwatch-tmpfiles.conf" /etc/tmpfiles.d/wildwatch.conf
