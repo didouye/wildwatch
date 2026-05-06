@@ -12,6 +12,7 @@ class CameraConfig:
     detection_width: int = 640
     detection_height: int = 480
     rotation: int = 0  # 0, 90, 180, 270
+    lens_position: float = 0.27  # picamera2 dioptres (1/m). 0=infinity, 0.27≈hyperfocal for Module 3 standard f/2.0 (sharp from ~1.9 m to ∞)
 
 
 @dataclass(frozen=True)

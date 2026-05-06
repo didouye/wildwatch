@@ -296,6 +296,39 @@ Web auth (login/password) and HTTPS termination are deferred to V1.0.
       heartbeat trigger + 2 card sticker + 1 modal). 132 server tests
       total. Ruff clean.
 
+### V1.2 PR 4: per-camera focus control from the web UI
+
+Default focus is now `lens_position = 0.27` (≈ hyperfocal for Module 3
+standard f/2.0 on IMX708, sharp from ~1.9 m to ∞ with a strict CoC of
+3 µm). This PR makes that field editable per camera from the `/cameras`
+edit modal so operators can fine-tune (close-up setups, stricter piqué
+on a known subject distance, etc.).
+
+- [ ] Expose `lens_position` in the existing edit-settings form
+      (13th field after the 12 from PR2). Likely surfaced as a
+      "focus distance (m)" slider/number with internal conversion to
+      dioptres so the UI stays human-friendly; dioptres shown as a
+      hint
+- [ ] Server validation: `lens_position` in [0.0, 32.0] (Module 3
+      range), `0` accepted for infinity
+- [ ] Add `lens_position` to `FIELD_TO_SECTION` in the agent's apply
+      module so the TOML merge writes it into `[camera]`
+- [ ] Capture's reported_config already carries `lens_position`
+      (added with the default in this commit) -- nothing to do
+      capture-side
+- [ ] Sidecar metadata already exposes the actually-applied
+      `LensPosition` from picamera2 (added with the default), so
+      photos record what was in effect at capture time
+- [ ] Edit modal hint: "0 = infinity, 0.27 ≈ hyperfocal (default,
+      sharp from ~1.9 m), 1.0 = focus at 1 m, 2.0 = 50 cm, etc."
+- [ ] Tests: form validation, FIELD_TO_SECTION mapping, agent apply
+      writes `[camera].lens_position`
+
+**Future enhancement (depends on the V2+ Video section):** once a live
+preview/MJPEG stream exists, the focus slider becomes a real-time
+focus assist -- operator drags the slider, sees the live preview
+update, dials in the exact focus before locking it.
+
 ---
 
 ## Future (V2+)
@@ -329,3 +362,6 @@ Web auth (login/password) and HTTPS termination are deferred to V1.0.
 ### Video
 - [ ] Capture short videos in addition to stills
 - [ ] Live streaming (optional)
+- [ ] Focus assist: live MJPEG preview tied to the per-camera focus
+      slider in `/cameras` (V1.2 PR 4 enhancement) -- drag the lens
+      position and see the picture sharpen in real time before locking

@@ -57,6 +57,15 @@ class Camera:
         self._picam.configure(preview_config)
         self._picam.start()
 
+        from libcamera import controls as libcontrols
+
+        self._picam.set_controls(
+            {
+                "AfMode": libcontrols.AfModeEnum.Manual,
+                "LensPosition": self._cfg.lens_position,
+            }
+        )
+
     def stop(self) -> None:
         if self._picam is not None:
             self._picam.stop()
@@ -104,6 +113,7 @@ class Camera:
                 "exposure_time_us": raw_meta.get("ExposureTime"),
                 "analogue_gain": raw_meta.get("AnalogueGain"),
                 "lux": raw_meta.get("Lux"),
+                "lens_position": raw_meta.get("LensPosition"),
             },
         }
 
