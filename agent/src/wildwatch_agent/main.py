@@ -1,18 +1,24 @@
-"""WildWatch agent -- heartbeat client + (PR2+) config applier.
+"""WildWatch agent -- heartbeat client + config applier.
 
-PR1 scope: heartbeat only. The `desired_config` from the server response
-is logged but not applied. PR2 wires `apply.py`.
+PR2 wires `apply.py`: when the heartbeat response carries a `desired_config`,
+hash it, apply it once, and report `applied_at` on subsequent heartbeats
+until the server clears the desired (signaling success).
 """
 
 from __future__ import annotations
 
 import argparse
+import hashlib
+import json
 import logging
 import signal
 import time
 import tomllib
+from dataclasses import dataclass
+from datetime import datetime, timezone
 from pathlib import Path
 
+from wildwatch_agent import apply as apply_module
 from wildwatch_agent import system_info
 from wildwatch_agent.heartbeat import HeartbeatClient, build_payload
 from wildwatch_agent.state_reader import StateReader
@@ -25,6 +31,17 @@ AGENT_VERSION = "1.2.0"
 
 class StopRequested(Exception):
     pass
+
+
+@dataclass
+class ApplyState:
+    applied_desired_hash: str | None = None
+    last_apply_attempt_iso: str | None = None
+
+
+def _hash_desired(desired: dict) -> str:
+    canonical = json.dumps(desired, sort_keys=True, separators=(",", ":"))
+    return hashlib.sha256(canonical.encode()).hexdigest()
 
 
 def _install_signal_handlers() -> None:
@@ -61,6 +78,8 @@ def _tick(
     state_reader: StateReader,
     heartbeat_client: HeartbeatClient,
     queue_dir: Path | None,
+    apply_state: ApplyState,
+    config_path: Path,
 ) -> None:
     sys_info = system_info.snapshot(queue_dir=queue_dir)
     capture_status, status_age_s = state_reader.read_status()
@@ -72,14 +91,34 @@ def _tick(
         capture_status=capture_status,
         status_age_s=status_age_s,
         preview_age_s=preview_age_s,
+        last_apply_attempt_iso=apply_state.last_apply_attempt_iso,
     )
     response = heartbeat_client.send(payload=payload, preview=preview_blob)
-    if response is not None:
-        desired = response.get("desired_config")
-        cmds = response.get("commands") or []
-        if desired or cmds:
-            # PR1: log only; PR2 will dispatch to apply.py.
-            log.info("desired_config or commands received (ignored in PR1)")
+    if response is None:
+        return  # network error, retry next tick
+
+    desired = response.get("desired_config")
+    if desired is None:
+        # Server cleared (or never had) a desired. Reset state.
+        apply_state.applied_desired_hash = None
+        apply_state.last_apply_attempt_iso = None
+        return
+
+    # Server has a desired. Compare to what we last applied.
+    new_hash = _hash_desired(desired)
+    if new_hash == apply_state.applied_desired_hash:
+        # Already applied this exact desired. Wait for server to ack.
+        return
+
+    # New (or different) desired. Attempt apply.
+    log.info("Applying new desired_config from server")
+    try:
+        apply_module.apply_desired_config(desired, config_path=config_path)
+        apply_state.applied_desired_hash = new_hash
+        apply_state.last_apply_attempt_iso = datetime.now(timezone.utc).isoformat()
+    except Exception:
+        log.exception("apply_desired_config failed; will retry next tick")
+        # Don't update state -- retry on next heartbeat.
 
 
 def run(config_path: Path) -> None:
@@ -88,6 +127,7 @@ def run(config_path: Path) -> None:
     started = time.monotonic()
     reader = StateReader()
     client = HeartbeatClient(server_url=server_url, token=token, timeout=10.0)
+    apply_state = ApplyState()
     while True:
         try:
             _tick(
@@ -96,6 +136,8 @@ def run(config_path: Path) -> None:
                 state_reader=reader,
                 heartbeat_client=client,
                 queue_dir=queue_dir,
+                apply_state=apply_state,
+                config_path=config_path,
             )
         except Exception:
             log.exception("Heartbeat tick failed")
