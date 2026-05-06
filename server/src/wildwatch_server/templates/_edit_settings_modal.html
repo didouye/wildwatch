@@ -45,6 +45,37 @@
             {% endfor %}
           </select>
         </label>
+        <div class="reorient-row hidden flex items-start gap-3 pl-32 text-xs text-amber-200" data-initial-rotation="{{ effective.get('rotation', 0) }}">
+          <input type="checkbox" name="reorient_existing" id="reorient-existing-{{ ctx.cam.id }}" checked
+                 class="mt-0.5">
+          <label for="reorient-existing-{{ ctx.cam.id }}">
+            Also rotate the {{ ctx.photo_count }} existing photo(s) of this camera
+            by <span class="reorient-delta">?</span>&deg; clockwise.
+          </label>
+        </div>
+
+        <script>
+        (function() {
+          const modal = document.getElementById('edit-settings-modal-{{ ctx.cam.id }}');
+          if (!modal || modal.dataset.reorientWired === '1') return;
+          modal.dataset.reorientWired = '1';
+          const sel = modal.querySelector('select[name="rotation"]');
+          const row = modal.querySelector('.reorient-row');
+          const label = modal.querySelector('.reorient-delta');
+          const initial = parseInt(row.dataset.initialRotation || '0', 10);
+          function update() {
+            const cur = parseInt(sel.value, 10);
+            const delta = ((cur - initial) % 360 + 360) % 360;
+            if (delta === 0) {
+              row.classList.add('hidden');
+            } else {
+              row.classList.remove('hidden');
+              label.textContent = String(delta);
+            }
+          }
+          sel.addEventListener('change', update);
+        })();
+        </script>
       </fieldset>
 
       <fieldset class="space-y-2">

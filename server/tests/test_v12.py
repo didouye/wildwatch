@@ -837,3 +837,23 @@ def test_card_shows_reorient_queued_when_pending_no_progress_yet(
     # Either "queued" or "Reorienting" with 0/?
     assert "Reorient" in res.text
     assert "90" in res.text  # delta visible
+
+
+def test_edit_modal_includes_reorient_checkbox(client: TestClient) -> None:
+    cam = _enroll(client, hostname="rpi-1")
+    _approve(client, cam["id"])
+    payload = {
+        "agent": {"version": "1.2.0"},
+        "reported_config": {"rotation": 0, "capture_width": 2304, "capture_height": 1296,
+                            "detection_width": 640, "detection_height": 480,
+                            "pixel_threshold": 25, "area_threshold": 0.02,
+                            "background_alpha": 0.05, "warmup_frames": 30,
+                            "cooldown_seconds": 5.0, "burst_count": 3,
+                            "burst_interval_seconds": 0.5},
+    }
+    _heartbeat(client, cam["token"], payload)
+
+    res = client.get("/cameras")
+    body = res.text
+    assert 'name="reorient_existing"' in body
+    assert "existing photo" in body.lower() or "photo(s)" in body
